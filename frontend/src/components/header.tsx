@@ -44,7 +44,7 @@ export function Header({ onNuevaPartida }: HeaderProps) {
               <div className="text-sm font-medium truncate">{objetivo}</div>
             </>
           ) : (
-            <div className="text-sm font-semibold">Generador de Aventuras</div>
+            <div className="text-sm font-semibold">Echoes</div>
           )}
         </div>
 

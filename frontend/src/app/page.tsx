@@ -105,7 +105,11 @@ export default function HomePage() {
             )}
 
             {estado === "finalizada" && (
-              <FinalBanner final={final} razon={razonFin} onNuevaPartida={nuevaPartida} />
+              <FinalBanner
+                final={final}
+                razon={razonFin}
+                onNuevaPartida={nuevaPartida}
+              />
             )}
 
             <div ref={finalRef} />
@@ -122,9 +126,7 @@ function BienvenidaVacia({ onComenzar }: { onComenzar: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
       <Sparkles className="h-12 w-12 text-primary mb-4" />
-      <h1 className="text-3xl font-bold mb-2 font-serif">
-        Generador de Aventuras
-      </h1>
+      <h1 className="text-3xl font-bold mb-2 font-serif">Echoes</h1>
       <p className="text-muted-foreground mb-6 max-w-md">
         Aventuras interactivas generadas por IA, adaptadas a tus decisiones.
         Cada partida es única.
