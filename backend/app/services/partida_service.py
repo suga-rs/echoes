@@ -183,7 +183,11 @@ class PartidaService:
         self, system_prompt: str, user_prompt: str,
         json_schema: dict, modelo_pydantic: type,
     ):
-        raw, parsed = self.foundry.chat_json_raw(system_prompt, user_prompt)
+        import json
+        # Inyectamos el schema en el prompt del sistema para que el LLM sepa que devolver.
+        system_with_schema = f"{system_prompt}\n\n# SCHEMA JSON ESPERADO\n{json.dumps(json_schema, indent=2)}"
+
+        raw, parsed = self.foundry.chat_json_raw(system_with_schema, user_prompt)
 
         if parsed is not None:
             try:

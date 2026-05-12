@@ -11,6 +11,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { usePartidaStore } from "@/store/partida-store";
+import { ThemeToggle } from "./theme-toggle";
 
 interface HeaderProps {
   onNuevaPartida: () => void;
@@ -71,6 +72,8 @@ export function Header({ onNuevaPartida }: HeaderProps) {
             </Button>
           </>
         )}
+
+        <ThemeToggle />
 
         <Button size="sm" onClick={onNuevaPartida} title="Nueva aventura">
           <Plus className="h-4 w-4 mr-1" />
