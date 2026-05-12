@@ -1,0 +1,58 @@
+@import url("https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600;700&display=swap");
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 30 20% 96%;
+    --foreground: 25 25% 12%;
+    --card: 35 25% 92%;
+    --card-foreground: 25 25% 12%;
+    --primary: 25 70% 32%;
+    --primary-foreground: 35 30% 96%;
+    --muted: 30 15% 88%;
+    --muted-foreground: 25 15% 40%;
+    --border: 30 15% 80%;
+    --input: 30 15% 85%;
+    --ring: 25 70% 32%;
+    --accent: 40 60% 70%;
+    --accent-foreground: 25 25% 12%;
+    --destructive: 0 70% 45%;
+    --destructive-foreground: 0 0% 98%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 25 20% 8%;
+    --foreground: 35 20% 92%;
+    --card: 25 18% 12%;
+    --card-foreground: 35 20% 92%;
+    --primary: 35 70% 60%;
+    --primary-foreground: 25 25% 12%;
+    --muted: 25 15% 18%;
+    --muted-foreground: 35 10% 65%;
+    --border: 25 15% 22%;
+    --input: 25 15% 18%;
+    --ring: 35 70% 60%;
+    --accent: 40 50% 35%;
+    --accent-foreground: 35 20% 92%;
+    --destructive: 0 65% 50%;
+    --destructive-foreground: 0 0% 98%;
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: theme("fontFamily.sans");
+  }
+}
+
+.narrativa {
+  font-family: theme("fontFamily.serif");
+  font-size: 1.05rem;
+  line-height: 1.7;
+}
