@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, Plus, Package } from "lucide-react";
+import { Copy, Plus, Package, PanelLeft, Home } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,9 +15,11 @@ import { ThemeToggle } from "./theme-toggle";
 
 interface HeaderProps {
   onNuevaPartida: () => void;
+  onToggleSidebar?: () => void;
+  onVolverAlInicio?: () => void;
 }
 
-export function Header({ onNuevaPartida }: HeaderProps) {
+export function Header({ onNuevaPartida, onToggleSidebar, onVolverAlInicio }: HeaderProps) {
   const [showInventario, setShowInventario] = useState(false);
   const [copiado, setCopiado] = useState(false);
   const codigo = usePartidaStore((s) => s.codigoPartida);
@@ -35,6 +37,17 @@ export function Header({ onNuevaPartida }: HeaderProps) {
   return (
     <header className="sticky top-0 z-30 bg-background/95 backdrop-blur border-b">
       <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+        {codigo && onToggleSidebar && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onToggleSidebar}
+            title="Ver partidas"
+          >
+            <PanelLeft className="h-4 w-4" />
+          </Button>
+        )}
+
         <div className="flex-1 min-w-0">
           {objetivo ? (
             <>
@@ -74,6 +87,17 @@ export function Header({ onNuevaPartida }: HeaderProps) {
         )}
 
         <ThemeToggle />
+
+        {codigo && onVolverAlInicio && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onVolverAlInicio}
+            title="Volver al inicio"
+          >
+            <Home className="h-4 w-4" />
+          </Button>
+        )}
 
         <Button size="sm" onClick={onNuevaPartida} title="Nueva aventura">
           <Plus className="h-4 w-4 mr-1" />

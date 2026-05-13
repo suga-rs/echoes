@@ -12,6 +12,7 @@
 - [x] Agregar la opción de resumir una partida, ya sea mediante la lista de partidas o ingresando el Código de Partida.
 - [x] Al querer iniciar una partida, debería haber un botón (con forma de dados) que genere la descripción de un personaje al azar, respetando el genero elegido y el limite de caracteres máximo (300).
 - [x] Al seleccionar la imagen abrirla como un modal para hacer zoom.
+- [x] Agregar una sidebar con la lista de partidas para reanudar, y en el encabezado la opción de volver a la pantalla inicial.
 
 ## Storytelling
 

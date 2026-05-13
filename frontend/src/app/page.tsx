@@ -9,6 +9,7 @@ import { TurnoCard, StreamingTurnoCard } from "@/components/turno-card";
 import { Acciones } from "@/components/acciones";
 import { FinalBanner } from "@/components/final-banner";
 import { PartidasList } from "@/components/partidas-list";
+import { PartidaSidebar } from "@/components/partida-sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -24,6 +25,7 @@ import { usePartidaStore } from "@/store/partida-store";
 export default function HomePage() {
   const [showInicio, setShowInicio] = useState(false);
   const [showPartidas, setShowPartidas] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [hidratado, setHidratado] = useState(false);
   const finalRef = useRef<HTMLDivElement>(null);
 
@@ -96,7 +98,11 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Header onNuevaPartida={nuevaPartida} />
+      <Header
+        onNuevaPartida={nuevaPartida}
+        onToggleSidebar={() => setSidebarOpen(true)}
+        onVolverAlInicio={resetear}
+      />
 
       <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-6">
         {!hidratado || cargandoPartida ? (
@@ -145,6 +151,15 @@ export default function HomePage() {
       </main>
 
       <InicioDialog open={showInicio} onOpenChange={setShowInicio} />
+
+      {codigo && (
+        <PartidaSidebar
+          open={sidebarOpen}
+          onOpenChange={setSidebarOpen}
+          onReanudar={handleReanudar}
+          codigoActivo={codigo}
+        />
+      )}
 
       <Dialog open={showPartidas} onOpenChange={setShowPartidas}>
         <DialogContent className="max-w-lg">
