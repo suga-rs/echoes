@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Loader } from "@/components/ui/loader";
-import type { PartidaResumen } from "@/lib/types";
 
 const GENERO_EMOJI: Record<string, string> = {
   "fantasía": "🗡️",
@@ -48,7 +47,7 @@ export function PartidasList({ onReanudar }: PartidasListProps) {
 
   return (
     <ul className="space-y-3">
-      {data.map((partida: PartidaResumen) => (
+      {data.map((partida) => (
         <li
           key={partida.codigo_partida}
           className="flex items-center justify-between gap-4 rounded-lg border bg-card p-4"

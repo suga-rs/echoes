@@ -51,6 +51,7 @@ interface PartidaState {
     razonFin: string | null;
   }) => void;
   setInventarioYUbicacion: (inventario: string[], ubicacion: string) => void;
+  establecerCodigo: (codigo: string) => void;
   resetear: () => void;
 
   // Streaming actions
@@ -121,6 +122,8 @@ export const usePartidaStore = create<PartidaState>()(
 
       setInventarioYUbicacion: (inventario, ubicacion) =>
         set({ inventario, ubicacion }),
+
+      establecerCodigo: (codigo) => set({ codigoPartida: codigo }),
 
       resetear: () =>
         set({

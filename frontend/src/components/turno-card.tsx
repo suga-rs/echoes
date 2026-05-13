@@ -28,6 +28,7 @@ export function TurnoCard({ turno, esUltimo, imagenCargando = false }: TurnoCard
       {turno.imagen_url ? (
         <>
           <button
+            type="button"
             onClick={() => setImagenAbierta(true)}
             className="relative w-full aspect-[3/2] mb-4 rounded-lg overflow-hidden bg-muted cursor-pointer hover:opacity-90 transition-opacity block"
           >
@@ -45,6 +46,7 @@ export function TurnoCard({ turno, esUltimo, imagenCargando = false }: TurnoCard
             src={turno.imagen_url}
             open={imagenAbierta}
             onClose={() => setImagenAbierta(false)}
+            alt={`Escena del turno ${turno.turno}`}
           />
         </>
       ) : imagenCargando ? (

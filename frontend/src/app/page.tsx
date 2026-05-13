@@ -37,8 +37,8 @@ export default function HomePage() {
   const imagenUltimoTurnoPendiente = usePartidaStore((s) => s.imagenUltimoTurnoPendiente);
   const hidratarDesdeBackend = usePartidaStore((s) => s.hidratarDesdeBackend);
   const resetear = usePartidaStore((s) => s.resetear);
+  const establecerCodigo = usePartidaStore((s) => s.establecerCodigo);
 
-  // Hidratar partida desde backend si hay código pero no historial
   const necesitaHidratacion = codigo !== null && historial.length === 0;
   const { isLoading: cargandoPartida, error: errorPartida } = useQuery({
     queryKey: ["partida", codigo],
@@ -62,21 +62,18 @@ export default function HomePage() {
     retry: false,
   });
 
-  // Marcar hidratación lista (evita pestañeo del modal de inicio)
   useEffect(() => {
     if (!necesitaHidratacion || !cargandoPartida) {
       setHidratado(true);
     }
   }, [necesitaHidratacion, cargandoPartida]);
 
-  // Si la hidratación falla (código viejo), resetear
   useEffect(() => {
     if (errorPartida) {
       resetear();
     }
   }, [errorPartida, resetear]);
 
-  // Scroll al final cuando se agrega un turno
   useEffect(() => {
     if (finalRef.current) {
       finalRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -88,9 +85,9 @@ export default function HomePage() {
     setShowInicio(true);
   };
 
-  const handleReanudar = (codigoPartida: string) => {
+  const handleReanudar = (codigo: string) => {
     resetear();
-    usePartidaStore.setState({ codigoPartida });
+    establecerCodigo(codigo);
     setShowPartidas(false);
   };
 

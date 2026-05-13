@@ -84,6 +84,7 @@ export function InicioDialog({ open, onOpenChange }: InicioDialogProps) {
             <div className="grid grid-cols-3 gap-2">
               {GENEROS.map((g) => (
                 <button
+                  type="button"
                   key={g.value}
                   onClick={() => setGenero(g.value)}
                   disabled={mutation.isPending}
