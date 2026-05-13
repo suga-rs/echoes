@@ -52,10 +52,10 @@ from app.services.prompts import (
 logger = get_logger("service.partidas")
 
 _TIPOS_ACCION: dict[str, list[str]] = {
-    "confrontacion": ["confrontar", "engañar", "intimidar"],
-    "social": ["negociar", "ayudar_npc", "espiar"],
-    "exploracion": ["inspeccionar", "buscar_ruta"],
-    "recursos": ["usar_objeto", "improvisar"],
+    "confrontacion": ["confrontar directamente", "engañar", "intimidar"],
+    "social": ["negociar", "ayudar al NPC", "espiar"],
+    "exploracion": ["inspeccionar el entorno", "buscar otra ruta"],
+    "recursos": ["usar un objeto del inventario", "improvisar con lo disponible"],
 }
 
 
@@ -515,7 +515,8 @@ class PartidaService:
         return "-".join(groups)
 
     def _seleccionar_tipos_accion(self, partida: Partida) -> list[str]:
-        rng = random.Random(partida.metadata.turno_actual)
+        seed = sum(ord(c) for c in partida.codigo_partida) + partida.metadata.turno_actual * 1000
+        rng = random.Random(seed)
 
         prioritarias = []
         if partida.world_state.npcs:
