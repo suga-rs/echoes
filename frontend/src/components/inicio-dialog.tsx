@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { Dice5 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -56,6 +57,14 @@ export function InicioDialog({ open, onOpenChange }: InicioDialogProps) {
     },
   });
 
+  const descripcionAleatoriaMutation = useMutation({
+    mutationFn: (generoSeleccionado: Genero) =>
+      api.generarDescripcionAleatoria(generoSeleccionado),
+    onSuccess: (data) => {
+      setDescripcion(data.descripcion);
+    },
+  });
+
   const puedeEnviar = genero !== null && descripcion.trim().length >= 10 && !mutation.isPending;
 
   return (
@@ -97,7 +106,23 @@ export function InicioDialog({ open, onOpenChange }: InicioDialogProps) {
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="descripcion">Tu personaje</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="descripcion">Tu personaje</Label>
+              <button
+                type="button"
+                onClick={() => genero && descripcionAleatoriaMutation.mutate(genero)}
+                disabled={genero === null || descripcionAleatoriaMutation.isPending || mutation.isPending}
+                title={genero === null ? "Seleccioná un género primero" : "Generar descripción aleatoria"}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {descripcionAleatoriaMutation.isPending ? (
+                  <Loader className="h-4 w-4" />
+                ) : (
+                  <Dice5 className="h-4 w-4" />
+                )}
+                Aleatoria
+              </button>
+            </div>
             <Textarea
               id="descripcion"
               placeholder="Ej: una arqueóloga escéptica de 40 años, especialista en ruinas perdidas..."

@@ -9,6 +9,8 @@ import type {
   ApiError,
   EstadoPartida,
   Partida,
+  PartidaResumen,
+  RandomDescriptionResponse,
   StartResponse,
   StateResponse,
   TipoFinal,
@@ -159,4 +161,13 @@ export const api = {
 
   getEstado: (codigo: string) =>
     request<StateResponse>(`/api/partidas/${codigo}/state`),
+
+  listarPartidas: () =>
+    request<PartidaResumen[]>("/api/partidas"),
+
+  generarDescripcionAleatoria: (genero: Genero) =>
+    request<RandomDescriptionResponse>("/api/partidas/random-description", {
+      method: "POST",
+      body: JSON.stringify({ genero }),
+    }),
 };

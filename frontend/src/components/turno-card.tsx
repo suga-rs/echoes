@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
 import type { TurnoHistorial } from "@/lib/types";
+import { ImagenModal } from "@/components/imagen-modal";
 
 interface TurnoCardProps {
   turno: TurnoHistorial;
@@ -10,6 +12,8 @@ interface TurnoCardProps {
 }
 
 export function TurnoCard({ turno, esUltimo, imagenCargando = false }: TurnoCardProps) {
+  const [imagenAbierta, setImagenAbierta] = useState(false);
+
   return (
     <article className="animate-fade-in mb-8">
       {turno.accion_jugador !== "<inicio>" && (
@@ -22,17 +26,27 @@ export function TurnoCard({ turno, esUltimo, imagenCargando = false }: TurnoCard
       )}
 
       {turno.imagen_url ? (
-        <div className="relative w-full aspect-[3/2] mb-4 rounded-lg overflow-hidden bg-muted">
-          <Image
+        <>
+          <button
+            onClick={() => setImagenAbierta(true)}
+            className="relative w-full aspect-[3/2] mb-4 rounded-lg overflow-hidden bg-muted cursor-pointer hover:opacity-90 transition-opacity block"
+          >
+            <Image
+              src={turno.imagen_url}
+              alt={`Escena del turno ${turno.turno}`}
+              fill
+              className="object-cover"
+              sizes="(max-width: 768px) 100vw, 768px"
+              priority={esUltimo}
+              unoptimized
+            />
+          </button>
+          <ImagenModal
             src={turno.imagen_url}
-            alt={`Escena del turno ${turno.turno}`}
-            fill
-            className="object-cover"
-            sizes="(max-width: 768px) 100vw, 768px"
-            priority={esUltimo}
-            unoptimized
+            open={imagenAbierta}
+            onClose={() => setImagenAbierta(false)}
           />
-        </div>
+        </>
       ) : imagenCargando ? (
         <div className="w-full aspect-[3/2] mb-4 rounded-lg bg-muted animate-pulse" />
       ) : null}

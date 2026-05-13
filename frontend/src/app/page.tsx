@@ -2,19 +2,28 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Sparkles } from "lucide-react";
+import { List, Sparkles } from "lucide-react";
 import { Header } from "@/components/header";
 import { InicioDialog } from "@/components/inicio-dialog";
 import { TurnoCard, StreamingTurnoCard } from "@/components/turno-card";
 import { Acciones } from "@/components/acciones";
 import { FinalBanner } from "@/components/final-banner";
+import { PartidasList } from "@/components/partidas-list";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Loader } from "@/components/ui/loader";
 import { api } from "@/lib/api";
 import { usePartidaStore } from "@/store/partida-store";
 
 export default function HomePage() {
   const [showInicio, setShowInicio] = useState(false);
+  const [showPartidas, setShowPartidas] = useState(false);
   const [hidratado, setHidratado] = useState(false);
   const finalRef = useRef<HTMLDivElement>(null);
 
@@ -79,6 +88,12 @@ export default function HomePage() {
     setShowInicio(true);
   };
 
+  const handleReanudar = (codigoPartida: string) => {
+    resetear();
+    usePartidaStore.setState({ codigoPartida });
+    setShowPartidas(false);
+  };
+
   const ultimoTurno = historial[historial.length - 1];
   const sinPartida = hidratado && !codigo;
 
@@ -92,7 +107,11 @@ export default function HomePage() {
             <Loader message="Cargando tu aventura..." />
           </div>
         ) : sinPartida ? (
-          <BienvenidaVacia onComenzar={() => setShowInicio(true)} />
+          <BienvenidaVacia
+            onComenzar={() => setShowInicio(true)}
+            onVerPartidas={() => setShowPartidas(true)}
+            onReanudar={handleReanudar}
+          />
         ) : (
           <>
             {historial.map((turno, idx) => {
@@ -129,11 +148,35 @@ export default function HomePage() {
       </main>
 
       <InicioDialog open={showInicio} onOpenChange={setShowInicio} />
+
+      <Dialog open={showPartidas} onOpenChange={setShowPartidas}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Partidas guardadas</DialogTitle>
+          </DialogHeader>
+          <PartidasList onReanudar={handleReanudar} />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function BienvenidaVacia({ onComenzar }: { onComenzar: () => void }) {
+interface BienvenidaVaciaProps {
+  onComenzar: () => void;
+  onVerPartidas: () => void;
+  onReanudar: (codigo: string) => void;
+}
+
+function BienvenidaVacia({ onComenzar, onVerPartidas, onReanudar }: BienvenidaVaciaProps) {
+  const [codigoInput, setCodigoInput] = useState("");
+
+  const handleReanudarManual = () => {
+    const trimmed = codigoInput.trim();
+    if (trimmed) {
+      onReanudar(trimmed);
+    }
+  };
+
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
       <Sparkles className="h-12 w-12 text-primary mb-4" />
@@ -142,9 +185,43 @@ function BienvenidaVacia({ onComenzar }: { onComenzar: () => void }) {
         Aventuras interactivas generadas por IA, adaptadas a tus decisiones.
         Cada partida es única.
       </p>
-      <Button size="lg" onClick={onComenzar}>
+      <Button size="lg" onClick={onComenzar} className="mb-6">
         Empezar aventura
       </Button>
+
+      <div className="w-full max-w-sm space-y-3">
+        <div className="flex items-center gap-2 text-muted-foreground text-sm">
+          <div className="flex-1 border-t" />
+          <span>o retomá una partida</span>
+          <div className="flex-1 border-t" />
+        </div>
+
+        <div className="flex gap-2">
+          <Input
+            placeholder="Código de partida"
+            value={codigoInput}
+            onChange={(e) => setCodigoInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleReanudarManual(); }}
+          />
+          <Button
+            variant="outline"
+            onClick={handleReanudarManual}
+            disabled={!codigoInput.trim()}
+          >
+            Reanudar
+          </Button>
+        </div>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full gap-2"
+          onClick={onVerPartidas}
+        >
+          <List className="h-4 w-4" />
+          Ver todas las partidas
+        </Button>
+      </div>
     </div>
   );
 }

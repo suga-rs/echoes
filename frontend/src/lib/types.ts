@@ -81,3 +81,16 @@ export interface ApiError {
   mensaje: string;
   detalles: Record<string, unknown>;
 }
+
+export interface PartidaResumen {
+  codigo_partida: string;
+  nombre_personaje: string;
+  turno_actual: number;
+  estado: EstadoPartida;
+  genero: Genero;
+  creada_en: string;
+}
+
+export interface RandomDescriptionResponse {
+  descripcion: string;
+}
