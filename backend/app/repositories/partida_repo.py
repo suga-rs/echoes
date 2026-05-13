@@ -31,13 +31,9 @@ class PartidaRepository:
 
     def get(self, codigo_partida: str) -> Partida:
         try:
-            doc = self._container.read_item(
-                item=codigo_partida, partition_key=codigo_partida
-            )
+            doc = self._container.read_item(item=codigo_partida, partition_key=codigo_partida)
         except exceptions.CosmosResourceNotFoundError as e:
-            raise PartidaNoEncontrada(
-                f"No existe partida con código '{codigo_partida}'"
-            ) from e
+            raise PartidaNoEncontrada(f"No existe partida con código '{codigo_partida}'") from e
         return Partida.model_validate(doc)
 
     def upsert(self, partida: Partida) -> Partida:
@@ -47,9 +43,7 @@ class PartidaRepository:
 
     def exists(self, codigo_partida: str) -> bool:
         try:
-            self._container.read_item(
-                item=codigo_partida, partition_key=codigo_partida
-            )
+            self._container.read_item(item=codigo_partida, partition_key=codigo_partida)
             return True
         except exceptions.CosmosResourceNotFoundError:
             return False

@@ -1,7 +1,7 @@
 """Fixtures comunes."""
 
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -20,18 +20,25 @@ os.environ.setdefault(
 )
 
 from app.models.domain import (
-    EstadoPartida, Genero, MetadataPartida, Partida, Personaje, WorldState,
+    EstadoPartida,
+    Genero,
+    MetadataPartida,
+    Partida,
+    Personaje,
+    WorldState,
 )
 
 
 @pytest.fixture
 def partida_de_ejemplo() -> Partida:
     return Partida(
-        id="test-abc-123", codigo_partida="test-abc-123",
+        id="test-abc-123",
+        codigo_partida="test-abc-123",
         metadata=MetadataPartida(
             genero=Genero.FANTASIA,
-            creada_en=datetime.now(timezone.utc),
-            turno_actual=1, estado=EstadoPartida.EN_CURSO,
+            creada_en=datetime.now(UTC),
+            turno_actual=1,
+            estado=EstadoPartida.EN_CURSO,
         ),
         personaje=Personaje(
             nombre="Lyra",

@@ -2,7 +2,6 @@
 
 from app.models.domain import Genero, Partida
 
-
 SYSTEM_PROMPT_TURNO = """\
 Sos el narrador de una aventura de texto interactiva en español rioplatense. \
 Tu rol es generar una historia inmersiva, coherente y adaptativa que responde \
@@ -102,12 +101,10 @@ Reglas:
 
 ESTILO_POR_GENERO: dict[Genero, str] = {
     Genero.FANTASIA: (
-        "digital painting, fantasy art style, dramatic lighting, "
-        "detailed, painterly, atmospheric"
+        "digital painting, fantasy art style, dramatic lighting, detailed, painterly, atmospheric"
     ),
     Genero.CIENCIA_FICCION: (
-        "concept art, sci-fi cinematic, neon and shadow, "
-        "futuristic, detailed, atmospheric"
+        "concept art, sci-fi cinematic, neon and shadow, futuristic, detailed, atmospheric"
     ),
     Genero.TERROR: (
         "dark atmospheric illustration, muted palette, "
@@ -144,9 +141,7 @@ def build_turno_user_prompt(partida: Partida, accion_jugador: str) -> str:
     turnos_recientes = partida.historial[-4:]
     if turnos_recientes:
         historial_txt = "\n\n".join(
-            f"Turno {t.turno}:\n"
-            f"Acción del jugador: {t.accion_jugador}\n"
-            f"Narrativa: {t.narrativa}"
+            f"Turno {t.turno}:\nAcción del jugador: {t.accion_jugador}\nNarrativa: {t.narrativa}"
             for t in turnos_recientes
         )
     else:
@@ -239,6 +234,4 @@ def _format_lista(items: list[str]) -> str:
 def _format_npcs(npcs: list) -> str:
     if not npcs:
         return "(ninguno)"
-    return "\n".join(
-        f"- {n.nombre} (actitud: {n.actitud.value}): {n.descripcion}" for n in npcs
-    )
+    return "\n".join(f"- {n.nombre} (actitud: {n.actitud.value}): {n.descripcion}" for n in npcs)

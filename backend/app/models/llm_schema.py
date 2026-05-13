@@ -4,25 +4,33 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-
 TURNO_JSON_SCHEMA: dict[str, Any] = {
     "type": "object",
     "required": [
-        "narrativa", "opciones", "actualizaciones_estado",
-        "generar_imagen", "estado_aventura",
+        "narrativa",
+        "opciones",
+        "actualizaciones_estado",
+        "generar_imagen",
+        "estado_aventura",
     ],
     "additionalProperties": False,
     "properties": {
         "narrativa": {"type": "string", "minLength": 50, "maxLength": 1500},
         "opciones": {
-            "type": "array", "minItems": 3, "maxItems": 3,
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
             "items": {"type": "string", "minLength": 3, "maxLength": 100},
         },
         "actualizaciones_estado": {
             "type": "object",
             "required": [
-                "ubicacion_nueva", "agregar_inventario", "quitar_inventario",
-                "evento_clave", "npc_encontrado", "npc_actitud_cambio",
+                "ubicacion_nueva",
+                "agregar_inventario",
+                "quitar_inventario",
+                "evento_clave",
+                "npc_encontrado",
+                "npc_actitud_cambio",
                 "pista_descubierta",
             ],
             "additionalProperties": False,
@@ -95,8 +103,10 @@ CREACION_JSON_SCHEMA: dict[str, Any] = {
         "personaje": {
             "type": "object",
             "required": [
-                "nombre", "descripcion_narrativa",
-                "descripcion_visual_en", "inventario_inicial",
+                "nombre",
+                "descripcion_narrativa",
+                "descripcion_visual_en",
+                "inventario_inicial",
             ],
             "additionalProperties": False,
             "properties": {
@@ -126,7 +136,9 @@ CREACION_JSON_SCHEMA: dict[str, Any] = {
             "properties": {
                 "narrativa": {"type": "string", "maxLength": 1500},
                 "opciones": {
-                    "type": "array", "minItems": 3, "maxItems": 3,
+                    "type": "array",
+                    "minItems": 3,
+                    "maxItems": 3,
                     "items": {"type": "string"},
                 },
                 "descripcion_imagen_en": {"type": "string"},

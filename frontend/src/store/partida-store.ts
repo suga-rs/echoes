@@ -21,6 +21,11 @@ interface PartidaState {
   final: "exito" | "fracaso" | "ambiguo" | null;
   razonFin: string | null;
 
+  // Streaming
+  isStreaming: boolean;
+  streamingNarrativa: string | null;
+  imagenUltimoTurnoPendiente: boolean;
+
   // Acciones
   iniciarPartida: (data: {
     codigo: string;
@@ -47,6 +52,13 @@ interface PartidaState {
   }) => void;
   setInventarioYUbicacion: (inventario: string[], ubicacion: string) => void;
   resetear: () => void;
+
+  // Streaming actions
+  iniciarStreaming: () => void;
+  appendStreamToken: (content: string) => void;
+  finalizarStreaming: (turno: TurnoHistorial, imagenPendiente: boolean) => void;
+  cancelarStreaming: () => void;
+  actualizarImagenTurno: (turnoNum: number, url: string) => void;
 }
 
 export const usePartidaStore = create<PartidaState>()(
@@ -61,6 +73,9 @@ export const usePartidaStore = create<PartidaState>()(
       estado: null,
       final: null,
       razonFin: null,
+      isStreaming: false,
+      streamingNarrativa: null,
+      imagenUltimoTurnoPendiente: false,
 
       iniciarPartida: ({ codigo, personaje, objetivo, primerTurno }) =>
         set({
@@ -118,7 +133,37 @@ export const usePartidaStore = create<PartidaState>()(
           estado: null,
           final: null,
           razonFin: null,
+          isStreaming: false,
+          streamingNarrativa: null,
+          imagenUltimoTurnoPendiente: false,
         }),
+
+      iniciarStreaming: () => set({ isStreaming: true, streamingNarrativa: "" }),
+
+      appendStreamToken: (content) =>
+        set((state) => ({ streamingNarrativa: (state.streamingNarrativa ?? "") + content })),
+
+      finalizarStreaming: (turno, imagenPendiente) =>
+        set((state) => ({
+          historial: [...state.historial, turno],
+          isStreaming: false,
+          streamingNarrativa: null,
+          imagenUltimoTurnoPendiente: imagenPendiente,
+        })),
+
+      cancelarStreaming: () => set({
+        isStreaming: false,
+        streamingNarrativa: null,
+        imagenUltimoTurnoPendiente: false,
+      }),
+
+      actualizarImagenTurno: (turnoNum, url) =>
+        set((state) => ({
+          imagenUltimoTurnoPendiente: false,
+          historial: state.historial.map((t) =>
+            t.turno === turnoNum ? { ...t, imagen_url: url } : t,
+          ),
+        })),
     }),
     {
       name: "aventuras-partida",

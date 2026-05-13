@@ -6,9 +6,10 @@ import type { TurnoHistorial } from "@/lib/types";
 interface TurnoCardProps {
   turno: TurnoHistorial;
   esUltimo: boolean;
+  imagenCargando?: boolean;
 }
 
-export function TurnoCard({ turno, esUltimo }: TurnoCardProps) {
+export function TurnoCard({ turno, esUltimo, imagenCargando = false }: TurnoCardProps) {
   return (
     <article className="animate-fade-in mb-8">
       {turno.accion_jugador !== "<inicio>" && (
@@ -20,7 +21,7 @@ export function TurnoCard({ turno, esUltimo }: TurnoCardProps) {
         </div>
       )}
 
-      {turno.imagen_url && (
+      {turno.imagen_url ? (
         <div className="relative w-full aspect-[3/2] mb-4 rounded-lg overflow-hidden bg-muted">
           <Image
             src={turno.imagen_url}
@@ -32,13 +33,35 @@ export function TurnoCard({ turno, esUltimo }: TurnoCardProps) {
             unoptimized
           />
         </div>
-      )}
+      ) : imagenCargando ? (
+        <div className="w-full aspect-[3/2] mb-4 rounded-lg bg-muted animate-pulse" />
+      ) : null}
 
       <div className="bg-card rounded-lg p-5 border">
         <div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
           Turno {turno.turno}
         </div>
         <p className="narrativa whitespace-pre-wrap">{turno.narrativa}</p>
+      </div>
+    </article>
+  );
+}
+
+interface StreamingTurnoCardProps {
+  narrativa: string;
+}
+
+export function StreamingTurnoCard({ narrativa }: StreamingTurnoCardProps) {
+  return (
+    <article className="mb-8">
+      <div className="bg-card rounded-lg p-5 border">
+        <div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
+          Generando...
+        </div>
+        <p className="narrativa whitespace-pre-wrap">
+          {narrativa}
+          <span className="inline-block w-0.5 h-4 bg-foreground ml-0.5 align-text-bottom animate-pulse" />
+        </p>
       </div>
     </article>
   );

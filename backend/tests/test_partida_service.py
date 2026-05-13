@@ -3,15 +3,19 @@
 import pytest
 
 from app.core.exceptions import (
-    LimiteTurnosExcedido, PartidaFinalizada, RespuestaLLMInvalida,
+    LimiteTurnosExcedido,
+    PartidaFinalizada,
+    RespuestaLLMInvalida,
 )
 from app.models.domain import EstadoPartida, Genero
 from app.services.partida_service import PartidaService
 
 
 def fake_turno_llm_response(
-    *, necesaria_imagen: bool = False,
-    estado: str = "en_curso", final: str | None = None,
+    *,
+    necesaria_imagen: bool = False,
+    estado: str = "en_curso",
+    final: str | None = None,
 ) -> dict:
     return {
         "narrativa": (
@@ -25,16 +29,20 @@ def fake_turno_llm_response(
         ],
         "actualizaciones_estado": {
             "ubicacion_nueva": None,
-            "agregar_inventario": [], "quitar_inventario": [],
-            "evento_clave": None, "npc_encontrado": None,
-            "npc_actitud_cambio": None, "pista_descubierta": None,
+            "agregar_inventario": [],
+            "quitar_inventario": [],
+            "evento_clave": None,
+            "npc_encontrado": None,
+            "npc_actitud_cambio": None,
+            "pista_descubierta": None,
         },
         "generar_imagen": {
             "necesaria": necesaria_imagen,
             "descripcion_escena_en": "A dark corridor" if necesaria_imagen else "",
         },
         "estado_aventura": {
-            "tipo": estado, "final": final,
+            "tipo": estado,
+            "final": final,
             "razon_fin": "Test fin" if final else None,
         },
     }
@@ -85,7 +93,9 @@ def test_crear_partida_ok(foundry_mock, partida_repo_mock, imagen_repo_mock):
 
 
 def test_crear_partida_falla_si_llm_no_genera_json_valido_dos_veces(
-    foundry_mock, partida_repo_mock, imagen_repo_mock,
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
 ):
     foundry_mock.chat_json_raw.return_value = ("not json", None)
     svc = PartidaService(
@@ -97,7 +107,10 @@ def test_crear_partida_falla_si_llm_no_genera_json_valido_dos_veces(
 
 
 def test_avanzar_turno_ok_sin_imagen(
-    foundry_mock, partida_repo_mock, imagen_repo_mock, partida_de_ejemplo,
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
 ):
     partida_repo_mock.get.return_value = partida_de_ejemplo
     foundry_mock.chat_json_raw.return_value = ("{}", fake_turno_llm_response())
@@ -114,12 +127,13 @@ def test_avanzar_turno_ok_sin_imagen(
 
 
 def test_avanzar_turno_con_imagen(
-    foundry_mock, partida_repo_mock, imagen_repo_mock, partida_de_ejemplo,
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
 ):
     partida_repo_mock.get.return_value = partida_de_ejemplo
-    foundry_mock.chat_json_raw.return_value = (
-        "{}", fake_turno_llm_response(necesaria_imagen=True)
-    )
+    foundry_mock.chat_json_raw.return_value = ("{}", fake_turno_llm_response(necesaria_imagen=True))
     foundry_mock.generar_imagen.return_value = b"\x89PNG" + b"\x00" * 100
     imagen_repo_mock.subir_imagen.return_value = "https://fake.blob/y.png"
 
@@ -133,12 +147,13 @@ def test_avanzar_turno_con_imagen(
 
 
 def test_falla_imagen_no_rompe_turno(
-    foundry_mock, partida_repo_mock, imagen_repo_mock, partida_de_ejemplo,
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
 ):
     partida_repo_mock.get.return_value = partida_de_ejemplo
-    foundry_mock.chat_json_raw.return_value = (
-        "{}", fake_turno_llm_response(necesaria_imagen=True)
-    )
+    foundry_mock.chat_json_raw.return_value = ("{}", fake_turno_llm_response(necesaria_imagen=True))
     foundry_mock.generar_imagen.side_effect = Exception("Timeout")
 
     svc = PartidaService(
@@ -151,7 +166,10 @@ def test_falla_imagen_no_rompe_turno(
 
 
 def test_partida_finalizada_rechaza_nuevos_turnos(
-    foundry_mock, partida_repo_mock, imagen_repo_mock, partida_de_ejemplo,
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
 ):
     partida_de_ejemplo.metadata.estado = EstadoPartida.FINALIZADA
     partida_repo_mock.get.return_value = partida_de_ejemplo
@@ -164,11 +182,15 @@ def test_partida_finalizada_rechaza_nuevos_turnos(
 
 
 def test_avanzar_turno_finaliza_la_partida(
-    foundry_mock, partida_repo_mock, imagen_repo_mock, partida_de_ejemplo,
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
 ):
     partida_repo_mock.get.return_value = partida_de_ejemplo
     foundry_mock.chat_json_raw.return_value = (
-        "{}", fake_turno_llm_response(estado="finalizada", final="exito")
+        "{}",
+        fake_turno_llm_response(estado="finalizada", final="exito"),
     )
 
     svc = PartidaService(
@@ -180,7 +202,10 @@ def test_avanzar_turno_finaliza_la_partida(
 
 
 def test_limite_turnos_excedido(
-    foundry_mock, partida_repo_mock, imagen_repo_mock, partida_de_ejemplo,
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
 ):
     partida_de_ejemplo.metadata.turno_actual = 25
     partida_repo_mock.get.return_value = partida_de_ejemplo
@@ -193,7 +218,10 @@ def test_limite_turnos_excedido(
 
 
 def test_actualizaciones_de_estado_se_aplican(
-    foundry_mock, partida_repo_mock, imagen_repo_mock, partida_de_ejemplo,
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
 ):
     partida_repo_mock.get.return_value = partida_de_ejemplo
     respuesta = fake_turno_llm_response()
@@ -214,7 +242,10 @@ def test_actualizaciones_de_estado_se_aplican(
 
 
 def test_reintento_con_prompt_correctivo(
-    foundry_mock, partida_repo_mock, imagen_repo_mock, partida_de_ejemplo,
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
 ):
     partida_repo_mock.get.return_value = partida_de_ejemplo
     foundry_mock.chat_json_raw.side_effect = [

@@ -5,6 +5,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from datetime import UTC
+
 from app.core.config import get_settings
 from app.repositories.imagen_repo import ImagenRepository
 from app.repositories.partida_repo import PartidaRepository
@@ -37,7 +39,8 @@ def main() -> int:
     def test_llm():
         resp = foundry.chat_json(
             system_prompt='Respondé solo con JSON valido: {"ok": true}. Nada más.',
-            user_prompt="ping", max_tokens=20,
+            user_prompt="ping",
+            max_tokens=20,
         )
         assert "ok" in resp
 
@@ -49,20 +52,29 @@ def main() -> int:
         assert isinstance(png, bytes) and len(png) > 1000
 
     def test_cosmos():
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         from app.models.domain import (
-            EstadoPartida, Genero, MetadataPartida, Partida, Personaje, WorldState,
+            EstadoPartida,
+            Genero,
+            MetadataPartida,
+            Partida,
+            Personaje,
+            WorldState,
         )
+
         codigo = "verify-test-zzz"
         partida = Partida(
-            id=codigo, codigo_partida=codigo,
+            id=codigo,
+            codigo_partida=codigo,
             metadata=MetadataPartida(
                 genero=Genero.FANTASIA,
-                creada_en=datetime.now(timezone.utc),
+                creada_en=datetime.now(UTC),
                 estado=EstadoPartida.EN_CURSO,
             ),
             personaje=Personaje(
-                nombre="Test", descripcion_narrativa="Test character",
+                nombre="Test",
+                descripcion_narrativa="Test character",
                 descripcion_visual_en="Test visual description for verification only",
             ),
             world_state=WorldState(ubicacion_actual="test", objetivo="verify"),
