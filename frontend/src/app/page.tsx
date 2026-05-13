@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Sparkles } from "lucide-react";
 import { Header } from "@/components/header";
 import { InicioDialog } from "@/components/inicio-dialog";
-import { TurnoCard } from "@/components/turno-card";
+import { TurnoCard, StreamingTurnoCard } from "@/components/turno-card";
 import { Acciones } from "@/components/acciones";
 import { FinalBanner } from "@/components/final-banner";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,9 @@ export default function HomePage() {
   const estado = usePartidaStore((s) => s.estado);
   const final = usePartidaStore((s) => s.final);
   const razonFin = usePartidaStore((s) => s.razonFin);
+  const isStreaming = usePartidaStore((s) => s.isStreaming);
+  const streamingNarrativa = usePartidaStore((s) => s.streamingNarrativa);
+  const imagenUltimoTurnoPendiente = usePartidaStore((s) => s.imagenUltimoTurnoPendiente);
   const hidratarDesdeBackend = usePartidaStore((s) => s.hidratarDesdeBackend);
   const resetear = usePartidaStore((s) => s.resetear);
 
@@ -92,13 +95,21 @@ export default function HomePage() {
           <BienvenidaVacia onComenzar={() => setShowInicio(true)} />
         ) : (
           <>
-            {historial.map((turno, idx) => (
-              <TurnoCard
-                key={turno.turno}
-                turno={turno}
-                esUltimo={idx === historial.length - 1}
-              />
-            ))}
+            {historial.map((turno, idx) => {
+              const esUltimo = idx === historial.length - 1;
+              return (
+                <TurnoCard
+                  key={turno.turno}
+                  turno={turno}
+                  esUltimo={esUltimo}
+                  imagenCargando={esUltimo && imagenUltimoTurnoPendiente}
+                />
+              );
+            })}
+
+            {isStreaming && streamingNarrativa !== null && (
+              <StreamingTurnoCard narrativa={streamingNarrativa} />
+            )}
 
             {estado === "en_curso" && ultimoTurno && (
               <Acciones opciones={ultimoTurno.opciones} />

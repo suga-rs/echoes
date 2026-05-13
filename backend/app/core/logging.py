@@ -22,6 +22,7 @@ def setup_logging() -> None:
     if settings.applicationinsights_connection_string:
         try:
             from azure.monitor.opentelemetry import configure_azure_monitor
+
             configure_azure_monitor(
                 connection_string=settings.applicationinsights_connection_string,
                 logger_name="app",

@@ -1,12 +1,11 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { useMutation } from "@tanstack/react-query";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader } from "@/components/ui/loader";
-import { api, ApiClientError } from "@/lib/api";
+import { avanzarTurnoStream, ApiClientError } from "@/lib/api";
 import { usePartidaStore } from "@/store/partida-store";
 
 interface AccionesProps {
@@ -15,41 +14,63 @@ interface AccionesProps {
 
 export function Acciones({ opciones }: AccionesProps) {
   const [accionLibre, setAccionLibre] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, setIsPending] = useState(false);
+
   const codigo = usePartidaStore((s) => s.codigoPartida);
-  const agregarTurno = usePartidaStore((s) => s.agregarTurno);
+  const isStreaming = usePartidaStore((s) => s.isStreaming);
+  const iniciarStreaming = usePartidaStore((s) => s.iniciarStreaming);
+  const appendStreamToken = usePartidaStore((s) => s.appendStreamToken);
+  const finalizarStreaming = usePartidaStore((s) => s.finalizarStreaming);
+  const actualizarImagenTurno = usePartidaStore((s) => s.actualizarImagenTurno);
   const actualizarEstadoFinal = usePartidaStore((s) => s.actualizarEstadoFinal);
+  const cancelarStreaming = usePartidaStore((s) => s.cancelarStreaming);
 
-  const mutation = useMutation({
-    mutationFn: ({ accion }: { accion: string }) => {
-      if (!codigo) throw new Error("No hay partida activa");
-      return api.avanzarTurno(codigo, accion);
-    },
-    onSuccess: (data, vars) => {
-      agregarTurno({
-        turno: data.turno,
-        accion_jugador: vars.accion,
-        narrativa: data.narrativa,
-        opciones: data.opciones,
-        imagen_url: data.imagen_url,
-      });
-      if (data.estado === "finalizada") {
-        actualizarEstadoFinal(data.estado, data.final, data.razon_fin);
-      }
-      setAccionLibre("");
-    },
-  });
+  const enviarAccion = async (accion: string) => {
+    if (!accion.trim() || isStreaming || !codigo) return;
 
-  const enviarAccion = (accion: string) => {
-    if (!accion.trim() || mutation.isPending) return;
-    mutation.mutate({ accion: accion.trim() });
+    setError(null);
+    setIsPending(true);
+    iniciarStreaming();
+
+    let turnoNum = 0;
+
+    await avanzarTurnoStream(codigo, accion.trim(), {
+      onToken: (content) => appendStreamToken(content),
+
+      onTurno: (data) => {
+        turnoNum = data.turno;
+        finalizarStreaming({
+          turno: data.turno,
+          accion_jugador: accion.trim(),
+          narrativa: data.narrativa,
+          opciones: data.opciones,
+          imagen_url: null,
+        }, data.imagen_pendiente);
+        if (data.estado === "finalizada") {
+          actualizarEstadoFinal(data.estado, data.final, data.razon_fin);
+        }
+        setAccionLibre("");
+      },
+
+      onImagen: (url) => actualizarImagenTurno(turnoNum, url),
+
+      onError: (err) => {
+        setError(err instanceof ApiClientError ? err.message : "Error inesperado");
+        setIsPending(false);
+        cancelarStreaming();
+      },
+
+      onDone: () => setIsPending(false),
+    });
   };
 
   const onSubmitLibre = (e: FormEvent) => {
     e.preventDefault();
-    enviarAccion(accionLibre);
+    void enviarAccion(accionLibre);
   };
 
-  if (mutation.isPending) {
+  if (isStreaming) {
     return (
       <div className="bg-card rounded-lg p-5 border">
         <Loader message="La aventura continúa..." />
@@ -69,7 +90,7 @@ export function Acciones({ opciones }: AccionesProps) {
             key={idx}
             variant="outline"
             className="justify-start text-left h-auto py-3 whitespace-normal"
-            onClick={() => enviarAccion(opcion)}
+            onClick={() => void enviarAccion(opcion)}
           >
             <span className="text-muted-foreground mr-3">{idx + 1}.</span>
             {opcion}
@@ -83,22 +104,21 @@ export function Acciones({ opciones }: AccionesProps) {
           value={accionLibre}
           onChange={(e) => setAccionLibre(e.target.value)}
           maxLength={200}
+          disabled={isPending}
         />
         <Button
           type="submit"
           size="icon"
-          disabled={!accionLibre.trim()}
+          disabled={!accionLibre.trim() || isPending}
           aria-label="Enviar acción"
         >
           <Send className="h-4 w-4" />
         </Button>
       </form>
 
-      {mutation.isError && (
+      {error && (
         <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
-          {mutation.error instanceof ApiClientError
-            ? mutation.error.message
-            : "Error inesperado"}
+          {error}
         </div>
       )}
     </div>

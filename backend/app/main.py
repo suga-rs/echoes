@@ -23,7 +23,8 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     logger.info(
         "Backend iniciado. LLM=%s, Image=%s, EntraID=%s",
-        settings.llm_deployment, settings.image_deployment,
+        settings.llm_deployment,
+        settings.image_deployment,
         settings.use_entra_id,
     )
     yield
