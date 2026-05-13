@@ -4,7 +4,9 @@ import Image from "next/image";
 import {
   Dialog,
   DialogContent,
+  DialogTitle,
 } from "@/components/ui/dialog";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 
 interface ImagenModalProps {
   src: string;
@@ -17,6 +19,7 @@ export function ImagenModal({ src, open, onClose, alt }: ImagenModalProps) {
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
       <DialogContent className="max-w-fit border-0 bg-transparent p-0 shadow-none [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:opacity-100">
+        <VisuallyHidden><DialogTitle>{alt ?? "Imagen de escena"}</DialogTitle></VisuallyHidden>
         <div className="relative max-h-[90vh] max-w-[90vw]">
           <Image
             src={src}
