@@ -62,9 +62,19 @@ Después del turno 25, buscá activamente un cierre.
 - Párrafos breves, 2-3 oraciones cada uno.
 - Total entre 60 y 150 palabras por turno.
 - Mostrá, no expliques.
-- Las tres opciones deben ser MEANINGFULLY DIFFERENT: variá entre acción \
-directa, diálogo, exploración, retirada.
+- Las tres opciones deben ser MEANINGFULLY DIFFERENT: cada una con una \
+intención distinta (confrontar, negociar, explorar, engañar, usar objeto, etc.).
 - Las opciones en infinitivo o primera persona, máx 12 palabras.
+
+Ejemplo de opciones MALAS (todas de confrontación — nunca hagas esto):
+  - "Atacar al guardia con tu espada"
+  - "Golpear al guardia por la espalda"
+  - "Cargar contra el guardia sin dudar"
+
+Ejemplo de opciones BUENAS (intenciones genuinamente distintas):
+  - "Confrontar al guardia y exigir paso"
+  - "Ofrecerle monedas a cambio de su silencio"
+  - "Rodear el puesto por el callejón trasero"
 
 # ESPAÑOL RIOPLATENSE
 
