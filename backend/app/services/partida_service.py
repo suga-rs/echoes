@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import random
 import secrets
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
@@ -49,6 +50,13 @@ from app.services.prompts import (
 )
 
 logger = get_logger("service.partidas")
+
+_TIPOS_ACCION: dict[str, list[str]] = {
+    "confrontacion": ["confrontar", "engañar", "intimidar"],
+    "social": ["negociar", "ayudar_npc", "espiar"],
+    "exploracion": ["inspeccionar", "buscar_ruta"],
+    "recursos": ["usar_objeto", "improvisar"],
+}
 
 
 class PartidaService:
@@ -503,6 +511,23 @@ class PartidaService:
         alphabet = "abcdefghijkmnpqrstuvwxyz23456789"
         groups = ["".join(secrets.choice(alphabet) for _ in range(4)) for _ in range(3)]
         return "-".join(groups)
+
+    def _seleccionar_tipos_accion(self, partida: Partida) -> list[str]:
+        rng = random.Random(partida.metadata.turno_actual)
+
+        prioritarias = []
+        if partida.world_state.npcs:
+            prioritarias.append("social")
+        if partida.personaje.inventario:
+            prioritarias.append("recursos")
+
+        restantes = [c for c in _TIPOS_ACCION if c not in prioritarias]
+        rng.shuffle(restantes)
+
+        seleccionadas = (prioritarias + restantes)[:3]
+        rng.shuffle(seleccionadas)
+
+        return [rng.choice(_TIPOS_ACCION[cat]) for cat in seleccionadas]
 
 
 class _NarrativaExtractor:
