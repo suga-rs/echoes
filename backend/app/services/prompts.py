@@ -142,7 +142,7 @@ el género, ajustala manteniendo el espíritu.
 """
 
 
-def build_turno_user_prompt(partida: Partida, accion_jugador: str) -> str:
+def build_turno_user_prompt(partida: Partida, accion_jugador: str, tipos_accion: list[str]) -> str:
     ws = partida.world_state
     pj = partida.personaje
     turno = partida.metadata.turno_actual
@@ -196,6 +196,10 @@ Pistas descubiertas:
 {accion_jugador}
 
 # INSTRUCCIÓN
+
+Las tres opciones de este turno deben seguir estos arquetipos en orden: \
+[{tipos_accion[0]}, {tipos_accion[1]}, {tipos_accion[2]}]. El texto puede ser \
+libre, pero la intención de cada opción debe corresponder a su arquetipo.
 
 Generá el turno {turno + 1} respetando el schema JSON. Mantené coherencia con \
 todo lo anterior. Si la acción del jugador es imposible dada la situación, \
