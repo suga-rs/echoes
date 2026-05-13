@@ -122,3 +122,20 @@ class ErrorResponse(BaseModel):
     code: str
     mensaje: str
     detalles: dict = Field(default_factory=dict)
+
+
+class PartidaResumen(BaseModel):
+    codigo_partida: str
+    nombre_personaje: str
+    turno_actual: int
+    estado: EstadoPartida
+    genero: Genero
+    creada_en: datetime
+
+
+class RandomDescriptionRequest(BaseModel):
+    genero: Genero
+
+
+class RandomDescriptionResponse(BaseModel):
+    descripcion: str

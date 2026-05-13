@@ -22,6 +22,7 @@ from app.models.domain import (
     Genero,
     MetadataPartida,
     Partida,
+    PartidaResumen,
     Personaje,
     StartResponse,
     TipoFinal,
@@ -215,6 +216,28 @@ class PartidaService:
 
     def get_partida(self, codigo_partida: str) -> Partida:
         return self.partidas.get(codigo_partida)
+
+    def listar_partidas(self) -> list[PartidaResumen]:
+        return self.partidas.list_all()
+
+    def generar_descripcion_aleatoria(self, genero: Genero) -> str:
+        system = (
+            "Eres un asistente creativo para juegos de aventura de texto. "
+            'Responde siempre con JSON: {"descripcion": "<texto>"}'
+        )
+        user = (
+            f"Genera una descripción creativa de personaje para una aventura de {genero.value}. "
+            "Máximo 280 caracteres. Solo la descripción, sin nombre ni comillas."
+        )
+        _, parsed = self.foundry.chat_json_raw(system, user)
+        if parsed is not None:
+            for key in ("descripcion", "description", "text", "content"):
+                if key in parsed and isinstance(parsed[key], str):
+                    return parsed[key][:300]
+            for v in parsed.values():
+                if isinstance(v, str) and v.strip():
+                    return v[:300]
+        return ""
 
     def _invocar_llm_con_reintento(
         self,

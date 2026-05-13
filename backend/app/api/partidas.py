@@ -9,6 +9,9 @@ from app.api.dependencies import get_partida_service
 from app.core.exceptions import AppError
 from app.core.logging import get_logger
 from app.models.domain import (
+    PartidaResumen,
+    RandomDescriptionRequest,
+    RandomDescriptionResponse,
     StartPartidaRequest,
     StartResponse,
     StateResponse,
@@ -20,6 +23,22 @@ from app.services.partida_service import PartidaService
 logger = get_logger("api.partidas")
 
 router = APIRouter(prefix="/api/partidas", tags=["partidas"])
+
+
+@router.get("", response_model=list[PartidaResumen])
+def listar_partidas(
+    service: PartidaService = Depends(get_partida_service),
+) -> list[PartidaResumen]:
+    return service.listar_partidas()
+
+
+@router.post("/random-description", response_model=RandomDescriptionResponse)
+def random_description(
+    body: RandomDescriptionRequest,
+    service: PartidaService = Depends(get_partida_service),
+) -> RandomDescriptionResponse:
+    descripcion = service.generar_descripcion_aleatoria(body.genero)
+    return RandomDescriptionResponse(descripcion=descripcion)
 
 
 @router.post("/start", response_model=StartResponse, status_code=status.HTTP_201_CREATED)
