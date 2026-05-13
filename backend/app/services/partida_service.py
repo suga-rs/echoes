@@ -230,14 +230,13 @@ class PartidaService:
             "Máximo 280 caracteres. Solo la descripción, sin nombre ni comillas."
         )
         _, parsed = self.foundry.chat_json_raw(system, user)
-        if parsed is not None:
-            for key in ("descripcion", "description", "text", "content"):
-                if key in parsed and isinstance(parsed[key], str):
-                    return parsed[key][:300]
-            for v in parsed.values():
-                if isinstance(v, str) and v.strip():
-                    return v[:300]
-        return ""
+        descripcion = parsed.get("descripcion") if parsed is not None else None
+        if not descripcion or not isinstance(descripcion, str):
+            raise RespuestaLLMInvalida(
+                "LLM no devolvió el campo 'descripcion' esperado",
+                detalles={"respuesta": str(parsed)[:200]},
+            )
+        return descripcion[:280]
 
     def _invocar_llm_con_reintento(
         self,

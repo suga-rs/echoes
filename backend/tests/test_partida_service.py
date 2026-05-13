@@ -132,6 +132,8 @@ def test_avanzar_turno_con_imagen(
     imagen_repo_mock,
     partida_de_ejemplo,
 ):
+    # turno_actual=4 → nuevo_turno=5; con intervalo=5 y 0 imágenes previas, el pacing lo permite
+    partida_de_ejemplo.metadata.turno_actual = 4
     partida_repo_mock.get.return_value = partida_de_ejemplo
     foundry_mock.chat_json_raw.return_value = ("{}", fake_turno_llm_response(necesaria_imagen=True))
     foundry_mock.generar_imagen.return_value = b"\x89PNG" + b"\x00" * 100

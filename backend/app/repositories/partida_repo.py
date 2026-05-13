@@ -53,7 +53,7 @@ class PartidaRepository:
             query=query,
             enable_cross_partition_query=True
         ))
-        return [PartidaResumen(**item) for item in items]
+        return [PartidaResumen.model_validate(item) for item in items]
 
     def exists(self, codigo_partida: str) -> bool:
         try:
