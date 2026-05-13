@@ -163,7 +163,8 @@ class PartidaService:
         )
 
         system = SYSTEM_PROMPT_TURNO
-        user = build_turno_user_prompt(partida, accion)
+        tipos_accion = self._seleccionar_tipos_accion(partida)
+        user = build_turno_user_prompt(partida, accion, tipos_accion)
         turno_llm = self._invocar_llm_con_reintento(
             system, user, TURNO_JSON_SCHEMA, TurnoLLMResponse
         )
@@ -410,7 +411,8 @@ class PartidaService:
             f"{SYSTEM_PROMPT_TURNO}\n\n# SCHEMA JSON ESPERADO\n"
             f"{json.dumps(TURNO_JSON_SCHEMA, indent=2)}"
         )
-        user = build_turno_user_prompt(partida, accion)
+        tipos_accion = self._seleccionar_tipos_accion(partida)
+        user = build_turno_user_prompt(partida, accion, tipos_accion)
 
         extractor = _NarrativaExtractor()
         accumulated = ""
