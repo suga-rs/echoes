@@ -11,7 +11,7 @@ Esta guía cubre el hosting del backend (FastAPI) y el frontend (Next.js) en Azu
 ```
 GitHub Repo
   frontend/ ──────────────────────────→ Azure Static Web Apps (swa-ata)
-  backend/  → GitHub Actions → GHCR → Azure Container Apps (ca-backend-ata)
+  backend/  → GitHub Actions → GHCR → Azure Container Apps (ca-backend-ia-aplicada)
     (push a main)   (build+push)          ↓ Managed Identity (sin API keys)
                                foundry-ata | cosmos-ata-XYZ | stataimgsXYZ
 ```
@@ -21,7 +21,7 @@ GitHub Repo
 | Recurso | Nombre | SKU | Costo ~mensual |
 |---|---|---|---|
 | Container Apps Environment | `cae-ata` | Consumption | pay-per-use |
-| Container App (backend) | `ca-backend-ata` | min=0 réplicas | ~$0 idle |
+| Container App (backend) | `ca-backend-ia-aplicada` | min=0 réplicas | ~$0 idle |
 | Static Web App (frontend) | `swa-ata` | Free | $0 |
 
 > **¿Por qué no ACR?** GitHub Container Registry (GHCR) cumple el mismo rol de forma gratuita y sin necesidad de permisos especiales en Azure. El workflow de GitHub Actions construye y sube la imagen automáticamente en cada push.
@@ -30,15 +30,14 @@ GitHub Repo
 
 ## Variables de sesión
 
-Definir al inicio de la sesión PowerShell. Reemplazar `XYZ` con el sufijo real de tus recursos y `<tu-usuario-github>` con tu usuario de GitHub:
+Definir al inicio de la sesión PowerShell. Reemplazar `XYZ` con el sufijo real de tus recursos:
 
 ```powershell
-$RG           = "rg-ata-dev"
+$RG           = "rg-ia-aplicada"
 $LOC          = "eastus2"
-$GHCR_USER    = "<tu-usuario-github>"    # ej: "sad-ko"
-# $GHCR_PAT  solo necesario si el repositorio es privado (ver Paso 1.1)
+$GHCR_USER    = "sad-ko"              # usuario de GitHub (dueño del repo)
 $CAE_NAME     = "cae-ata"
-$CA_NAME      = "ca-backend-ata"
+$CA_NAME      = "ca-backend-ia-aplicada"
 $SWA_NAME     = "swa-ata"
 $COSMOS_NAME  = "cosmos-ata-XYZ"
 $STORAGE_NAME = "stataimgsXYZ"
@@ -51,41 +50,20 @@ $APPI_CONN        = "<connection_string_de_appi-ata>"  # desde setup_azure.md pa
 
 ---
 
-## Paso 1: Preparar GHCR y GitHub Secrets
+## Secrets en GitHub
 
-### 1.1 Visibilidad de la imagen en GHCR
+El repositorio necesita estos secrets (Settings → Secrets and variables → Actions):
 
-El workflow usa `GITHUB_TOKEN` (automático) para **pushear** la imagen — no necesitás ningún PAT para eso.
+| Secret | Quién lo usa | Valor |
+|---|---|---|
+| `AZURE_STATIC_WEB_APPS_API_TOKEN_POLITE_PEBBLE_023B85A0F` | Workflow SWA | Token generado por Azure al crear el SWA |
+| `BACKEND_URL` | Workflow SWA | URL completa del Container App, ej: `https://ca-backend-ia-aplicada.xxx.eastus2.azurecontainerapps.io` |
 
-Para el **pull** que hace Azure Container Apps en runtime:
-
-- **Repo público** → la imagen en GHCR es pública por defecto. Container Apps puede pullearla **sin credenciales**. No hace falta ningún PAT.
-- **Repo privado** → la imagen es privada. En ese caso creá un Fine-grained PAT con permiso `read:packages` y guardalo como `$GHCR_PAT`:
-  - GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens
-  - Repository access: solo este repo | Permissions → Packages: Read-only
-
-### 1.2 Deploy del Container App (sin Service Principal)
-
-> **Azure for Students** no permite crear Service Principals (`az ad sp create-for-rbac` requiere permisos de Azure AD que la suscripción estudiantil no otorga).
-
-El workflow de GitHub Actions se encarga únicamente del **build y push a GHCR** — no necesita ninguna credencial de Azure para eso. El deploy al Container App se hace manualmente desde la máquina local con el script `scripts/deploy-backend.ps1`:
-
-```powershell
-# Ejecutar desde la raíz del repo, después de que el workflow haya subido la imagen
-.\scripts\deploy-backend.ps1
-```
-
-El script asume que ya tenés `az login` activo en tu sesión. Los valores por defecto (`rg-ata-dev`, `ca-backend-ata`, `sad-ko`) se pueden sobrescribir:
-
-```powershell
-.\scripts\deploy-backend.ps1 -GhcrUser "tu-usuario"
-```
-
-**No hay secrets de Azure que configurar en el repositorio de GitHub.**
+> `GITHUB_TOKEN` es automático — no hay que configurarlo. El backend workflow no necesita ninguna credencial de Azure: solo hace push a GHCR.
 
 ---
 
-## Paso 2: Dockerfile del backend
+## Paso 1: Dockerfile del backend
 
 El archivo `backend/Dockerfile` ya existe en el repositorio:
 
@@ -114,36 +92,74 @@ Notas:
 
 ---
 
-## Paso 3: Primer build y push de la imagen
+## Paso 2: Workflow de backend (build + push a GHCR)
 
-El workflow `.github/workflows/deploy-backend.yml` construye y sube la imagen automáticamente en cada push a `main` que modifique `backend/`. Para el primer deploy, hacer un push vacío o disparar el workflow manualmente:
+El archivo `.github/workflows/deploy-backend.yml` se dispara en cada push a `main` que modifique `backend/`. Solo construye y sube la imagen a GHCR — **no hay ningún paso de Azure**:
+
+```yaml
+name: Deploy Backend
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: ${{ github.repository_owner }}/backend
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ghcr.io/${{ env.IMAGE_NAME }}:latest
+```
+
+Para disparar el primer build:
 
 ```powershell
-# Opción A: disparar desde GitHub UI
+# Opción A: desde GitHub UI
 # → Actions → "Deploy Backend" → Run workflow
 
-# Opción B: push vacío desde la terminal
-git commit --allow-empty -m "chore: trigger initial backend deploy"
+# Opción B: push vacío
+git commit --allow-empty -m "chore: trigger initial backend build"
 git push origin main
 ```
 
 Verificar que la imagen quedó en GHCR:
 
 ```
-https://github.com/<tu-usuario-github>?tab=packages
+https://github.com/sad-ko?tab=packages
 ```
 
 Debe aparecer el package `backend` con el tag `latest`.
 
 ---
 
-## Paso 4: Azure Container Apps
+## Paso 3: Azure Container Apps
 
 ```powershell
-# 4.1 Instalar extensión (si no está instalada)
+# 3.1 Instalar extensión (si no está instalada)
 az extension add --name containerapp --upgrade
 
-# 4.2 Crear environment
+# 3.2 Crear environment
 az containerapp env create `
   --name $CAE_NAME `
   --resource-group $RG `
@@ -153,8 +169,8 @@ az containerapp env create `
 az containerapp env show --name $CAE_NAME --resource-group $RG `
   --query "properties.provisioningState" --output tsv
 
-# 4.3 Crear Container App
-# CORS_ORIGINS usa localhost como placeholder; se actualiza en el Paso 7 cuando
+# 3.3 Crear Container App
+# CORS_ORIGINS usa localhost como placeholder; se actualiza en el Paso 6 cuando
 # se conozca la URL del Static Web App.
 az containerapp create `
   --name $CA_NAME `
@@ -162,10 +178,6 @@ az containerapp create `
   --environment $CAE_NAME `
   --image "ghcr.io/${GHCR_USER}/backend:latest" `
   --system-assigned `
-  # Si el repo es privado, agregar también:
-  # --registry-server "ghcr.io" `
-  # --registry-username $GHCR_USER `
-  # --registry-password $GHCR_PAT `
   --target-port 8000 `
   --ingress external `
   --min-replicas 0 `
@@ -203,7 +215,7 @@ Las vars `FOUNDRY_API_KEY=`, `COSMOS_KEY=`, `STORAGE_CONNECTION_STRING=` se pasa
 
 ---
 
-## Paso 5: RBAC para la Managed Identity
+## Paso 4: RBAC para la Managed Identity
 
 El Container App tiene una system-assigned Managed Identity. Darle acceso a los tres servicios:
 
@@ -212,7 +224,7 @@ $CA_IDENTITY = $(az containerapp show `
   --name $CA_NAME --resource-group $RG `
   --query "identity.principalId" --output tsv)
 
-# 5.1 Cognitive Services User → Foundry
+# 4.1 Cognitive Services User → Foundry
 $FOUNDRY_ID = $(az cognitiveservices account show `
   --name "foundry-ata" --resource-group $RG --query id --output tsv)
 az role assignment create `
@@ -220,7 +232,7 @@ az role assignment create `
   --assignee $CA_IDENTITY `
   --scope $FOUNDRY_ID
 
-# 5.2 Cosmos DB Built-in Data Contributor (role ID es fijo en todos los tenants)
+# 4.2 Cosmos DB Built-in Data Contributor (role ID es fijo en todos los tenants)
 $COSMOS_ID = $(az cosmosdb show `
   --name $COSMOS_NAME --resource-group $RG --query id --output tsv)
 az cosmosdb sql role assignment create `
@@ -230,7 +242,7 @@ az cosmosdb sql role assignment create `
   --principal-id $CA_IDENTITY `
   --role-definition-id "00000000-0000-0000-0000-000000000002"
 
-# 5.3 Storage Blob Data Contributor
+# 4.3 Storage Blob Data Contributor
 $STORAGE_ID = $(az storage account show `
   --name $STORAGE_NAME --resource-group $RG --query id --output tsv)
 az role assignment create `
@@ -239,7 +251,7 @@ az role assignment create `
   --scope $STORAGE_ID
 ```
 
-> **Nota:** los role assignments de Azure pueden tardar hasta 5 minutos en propagarse. Si el Container App falla con errores de autenticación inmediatamente después de asignar, esperar y reiniciar la revisión activa:
+> **Nota:** los role assignments pueden tardar hasta 5 minutos en propagarse. Si el Container App falla con errores de autenticación inmediatamente después de asignar, esperar y reiniciar la revisión activa:
 >
 > ```powershell
 > az containerapp revision restart --name $CA_NAME --resource-group $RG `
@@ -249,41 +261,25 @@ az role assignment create `
 
 ---
 
-## Paso 6: Frontend en Azure Static Web Apps
+## Paso 5: Frontend en Azure Static Web Apps
 
-### 6.1 Modificar `frontend/next.config.mjs`
+### 5.1 Archivos ya presentes en el repositorio
+
+`frontend/next.config.mjs` — ya tiene `output: 'export'` y `unoptimized: true`:
 
 ```js
-/** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'export',
   reactStrictMode: true,
   images: {
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "*.blob.core.windows.net",
-      },
-    ],
+    remotePatterns: [{ protocol: "https", hostname: "*.blob.core.windows.net" }],
     unoptimized: true,
   },
 };
-
 export default nextConfig;
 ```
 
-`output: 'export'` genera el sitio estático en `out/`. `unoptimized: true` es requerido porque el Image Optimization API de Next.js no existe en sitios estáticos — las imágenes de Blob Storage se siguen cargando igual (son URLs directas).
-
-Verificar el build localmente antes de continuar:
-
-```powershell
-cd frontend
-npm run build
-# Debe generar la carpeta out/ sin errores
-cd ..
-```
-
-### 6.2 Crear `frontend/staticwebapp.config.json`
+`frontend/staticwebapp.config.json` — ya presente, redirige rutas al SPA:
 
 ```json
 {
@@ -294,11 +290,15 @@ cd ..
 }
 ```
 
-Este archivo le dice al SWA que redirija cualquier ruta no encontrada a `index.html`, necesario para que el routing de React funcione.
+Verificar el build localmente antes de continuar:
 
-### 6.3 Crear el Static Web App
+```powershell
+cd frontend
+npm run build   # debe generar out/ sin errores
+cd ..
+```
 
-Reemplazar `<tu-usuario>/<tu-repo>` con el path real del repo en GitHub:
+### 5.2 Crear el Static Web App
 
 ```powershell
 az extension add --name staticwebapp --upgrade
@@ -307,7 +307,7 @@ az staticwebapp create `
   --name $SWA_NAME `
   --resource-group $RG `
   --location "eastus2" `
-  --source "https://github.com/<tu-usuario>/<tu-repo>" `
+  --source "https://github.com/sad-ko/generador-de-aventuras" `
   --branch "main" `
   --app-location "frontend" `
   --output-location "out" `
@@ -319,22 +319,23 @@ $SWA_URL = $(az staticwebapp show `
 Write-Host "Frontend: https://$SWA_URL"
 ```
 
-El comando crea un workflow en `.github/workflows/` que hace `npm run build` + deploy automáticamente en cada push a `main`.
+Azure crea automáticamente el workflow `.github/workflows/azure-static-web-apps-polite-pebble-023b85a0f.yml` y agrega el secret `AZURE_STATIC_WEB_APPS_API_TOKEN_POLITE_PEBBLE_023B85A0F` al repositorio.
 
-### 6.4 Configurar `NEXT_PUBLIC_API_URL`
+### 5.3 Configurar el secret `BACKEND_URL`
 
-```powershell
-az staticwebapp appsettings set `
-  --name $SWA_NAME `
-  --resource-group $RG `
-  --setting-names "NEXT_PUBLIC_API_URL=https://$CA_URL"
+El workflow inyecta `NEXT_PUBLIC_API_URL` durante `npm run build` leyendo el secret `BACKEND_URL`. Crearlo en GitHub:
+
+```
+GitHub → Settings → Secrets and variables → Actions → New repository secret
+  Name:  BACKEND_URL
+  Value: https://<fqdn-del-container-app>
 ```
 
-Esta es una variable de build-time: el workflow de GitHub Actions la inyecta durante `npm run build`. Después de setearla, disparar un nuevo deploy haciendo cualquier push a `main`, o forzar uno desde la UI de GitHub Actions.
+Después de crearlo, disparar un redeploy desde GitHub Actions o hacer cualquier push a `main`.
 
 ---
 
-## Paso 7: Actualizar CORS en el Container App
+## Paso 6: Actualizar CORS en el Container App
 
 ```powershell
 az containerapp update `
@@ -380,6 +381,25 @@ Test end-to-end manual:
 
 ---
 
+## Actualizar la imagen del backend (redeploy)
+
+Cualquier push a `main` que modifique archivos dentro de `backend/` dispara automáticamente el workflow, que construye y sube la nueva imagen a GHCR. El deploy al Container App es siempre manual:
+
+```powershell
+# Ejecutar desde la raíz del repo (requiere az login activo)
+.\scripts\deploy-backend.ps1
+```
+
+El script tiene como defaults `rg-ia-aplicada` / `ca-backend-ia-aplicada` / `sad-ko`. Sobrescribir si es necesario:
+
+```powershell
+.\scripts\deploy-backend.ps1 -GhcrUser "otro-usuario" -ResourceGroup "otro-rg"
+```
+
+El frontend se redeploya automáticamente en cada push a `main` via el workflow que creó Azure Static Web Apps.
+
+---
+
 ## Solución de problemas comunes
 
 ### Container App falla con `CredentialUnavailableError` o `AuthorizationError`
@@ -394,7 +414,7 @@ az containerapp revision restart --name $CA_NAME --resource-group $RG `
 
 ### Container App falla con `ImagePullBackoff` o `401 Unauthorized` al pulllear de GHCR
 
-Solo ocurre si el repositorio es **privado** y el PAT expiró o le faltan permisos. Regenerar un PAT con `read:packages` y actualizar las credenciales:
+Solo ocurre si el repositorio es **privado**. Verificar que la imagen en GHCR no fue marcada manualmente como privada. Si es privada, agregar credenciales al Container App:
 
 ```powershell
 az containerapp registry set `
@@ -402,66 +422,27 @@ az containerapp registry set `
   --resource-group $RG `
   --server "ghcr.io" `
   --username $GHCR_USER `
-  --password $GHCR_PAT
+  --password $GHCR_PAT   # PAT con permiso read:packages
 ```
 
-Si el repositorio es público este error no debería ocurrir — verificar que la imagen en GHCR no fue marcada manualmente como privada.
-
-### El workflow de GitHub Actions falla en "Log in to Azure"
-
-Verificar que los cuatro secrets (`AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_SUBSCRIPTION_ID`, `AZURE_TENANT_ID`) están configurados correctamente en el repo.
-
 ### Las env vars no aparecen en el Container App
-
-Verificar con:
 
 ```powershell
 az containerapp show --name $CA_NAME --resource-group $RG `
   --query "properties.template.containers[0].env" --output table
 ```
 
-### El build de GitHub Actions falla o el frontend no usa la URL correcta del backend
-
-La variable `NEXT_PUBLIC_API_URL` se inyecta durante `npm run build` en el workflow. Si se configuró después de crear el SWA, disparar un redeploy:
-
-```powershell
-az staticwebapp environment redeploy `
-  --name $SWA_NAME `
-  --resource-group $RG `
-  --environment-name Production
-```
-
-### `npm run build` falla con `output: 'export'` y error en `next/image`
-
-Verificar que `unoptimized: true` está en la configuración de `images` en `next.config.mjs`.
-
 ### El frontend carga pero las llamadas al backend dan error de CORS
 
 Verificar que `CORS_ORIGINS` en el Container App incluye el dominio exacto del SWA:
 - Con `https://` al principio
 - Sin trailing slash al final
-- El dominio tiene la forma `<random>.azurestaticapps.net`
+- Formato: `<nombre>.azurestaticapps.net`
 
----
+### El frontend no usa la URL correcta del backend
 
-## Actualizar la imagen del backend (redeploy)
+La variable `NEXT_PUBLIC_API_URL` se inyecta desde el secret `BACKEND_URL` durante `npm run build` en el workflow del SWA. Si se configuró después del último deploy, forzar un redeploy desde GitHub Actions.
 
-Cualquier push a `main` que modifique archivos dentro de `backend/` dispara automáticamente el workflow `.github/workflows/deploy-backend.yml`, que:
-1. Construye la imagen Docker
-2. La sube a GHCR con el tag `latest`
-3. Actualiza el Container App para usar la nueva imagen
+### `npm run build` falla con `output: 'export'` y error en `next/image`
 
-Para forzar un redeploy sin cambios de código, correr el script local directamente:
-
-```powershell
-.\scripts\deploy-backend.ps1
-```
-
-O desde GitHub UI disparar el workflow (sólo hace push de la imagen, el deploy sigue siendo local):
-
-```powershell
-# Actions → "Deploy Backend" → Run workflow
-# luego: .\scripts\deploy-backend.ps1
-```
-
-El frontend se redeploya automáticamente en cada push a `main` via el workflow que crea Azure Static Web Apps.
+Verificar que `unoptimized: true` está en la configuración de `images` en `next.config.mjs`.
