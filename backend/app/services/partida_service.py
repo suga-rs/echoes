@@ -1,22 +1,26 @@
 """Servicio de partidas: orquesta LLM, imagen, persistencia."""
 
 import asyncio
+import contextlib
 import json
 import random
 import secrets
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
+from typing import TypeVar
 
 from jsonschema import ValidationError, validate
+from pydantic import BaseModel
 
+from app.core import telemetry
 from app.core.config import Settings, get_settings
 from app.core.exceptions import (
     FoundryError,
-    LimiteImagenesExcedido,
-    LimiteTurnosExcedido,
-    PartidaFinalizada,
-    PartidaNoEncontrada,
-    RespuestaLLMInvalida,
+    LimiteImagenesExcedidoError,
+    LimiteTurnosExcedidoError,
+    PartidaFinalizadaError,
+    PartidaNoEncontradaError,
+    RespuestaLLMInvalidaError,
 )
 from app.core.logging import get_logger
 from app.models.domain import (
@@ -44,6 +48,7 @@ from app.repositories.imagen_repo import ImagenRepository
 from app.repositories.partida_repo import PartidaRepository
 from app.services.foundry_client import FoundryClient
 from app.services.prompts import (
+    PROMPT_VERSION,
     SYSTEM_PROMPT_CREACION,
     SYSTEM_PROMPT_TURNO,
     build_creacion_user_prompt,
@@ -53,6 +58,8 @@ from app.services.prompts import (
 )
 
 logger = get_logger("service.partidas")
+
+_PydanticT = TypeVar("_PydanticT", bound=BaseModel)
 
 _TIPOS_ACCION: dict[str, list[str]] = {
     "confrontacion": ["confrontar directamente", "engañar", "intimidar"],
@@ -75,8 +82,10 @@ class PartidaService:
         self.partidas = partidas or PartidaRepository(self.settings)
         self.imagenes = imagenes or ImagenRepository(self.settings)
 
+    @telemetry.traced("crear_partida")
     def crear_partida(self, genero: Genero, descripcion_personaje: str) -> StartResponse:
-        logger.info("Creando partida: genero=%s", genero.value)
+        telemetry.add_span_attributes(genero=genero.value, prompt_version=PROMPT_VERSION)
+        logger.info("Creando partida: genero=%s, prompt_version=%s", genero.value, PROMPT_VERSION)
 
         system = SYSTEM_PROMPT_CREACION
         user = build_creacion_user_prompt(genero, descripcion_personaje)
@@ -100,6 +109,7 @@ class PartidaService:
             creada_en=datetime.now(UTC),
             turno_actual=1,
             estado=EstadoPartida.EN_CURSO,
+            prompt_version=PROMPT_VERSION,
         )
 
         imagen_url = self._generar_imagen_segura(
@@ -146,24 +156,32 @@ class PartidaService:
             ),
         )
 
+    @telemetry.traced("avanzar_turno")
     def avanzar_turno(self, codigo_partida: str, accion: str) -> TurnoResponse:
         partida = self.partidas.get(codigo_partida)
+        telemetry.add_span_attributes(
+            codigo_partida=codigo_partida,
+            turno=partida.metadata.turno_actual,
+            genero=partida.metadata.genero.value,
+            prompt_version=PROMPT_VERSION,
+        )
 
         if partida.metadata.estado == EstadoPartida.FINALIZADA:
-            raise PartidaFinalizada(
+            raise PartidaFinalizadaError(
                 f"La partida {codigo_partida} ya terminó",
                 detalles={"final": partida.metadata.final},
             )
 
         if partida.metadata.turno_actual >= self.settings.max_turnos_por_partida:
-            raise LimiteTurnosExcedido(
+            raise LimiteTurnosExcedidoError(
                 f"La partida alcanzó el máximo de {self.settings.max_turnos_por_partida} turnos"
             )
 
         logger.info(
-            "Avanzando turno: codigo=%s, turno_actual=%s",
+            "Avanzando turno: codigo=%s, turno_actual=%s, prompt_version=%s",
             codigo_partida,
             partida.metadata.turno_actual,
+            PROMPT_VERSION,
         )
 
         system = SYSTEM_PROMPT_TURNO
@@ -207,10 +225,8 @@ class PartidaService:
         if turno_llm.estado_aventura.tipo == "finalizada":
             partida.metadata.estado = EstadoPartida.FINALIZADA
             if turno_llm.estado_aventura.final:
-                try:
+                with contextlib.suppress(ValueError):
                     partida.metadata.final = TipoFinal(turno_llm.estado_aventura.final)
-                except ValueError:
-                    pass
             partida.metadata.razon_fin = turno_llm.estado_aventura.razon_fin
 
         self.partidas.upsert(partida)
@@ -228,6 +244,26 @@ class PartidaService:
     def get_partida(self, codigo_partida: str) -> Partida:
         return self.partidas.get(codigo_partida)
 
+    def registrar_feedback(self, codigo_partida: str, turno: int, incoherente: bool) -> str:
+        """Marca un turno con feedback de calidad del jugador y lo persiste."""
+        partida = self.partidas.get(codigo_partida)
+        turno_obj = next((t for t in partida.historial if t.turno == turno), None)
+        if turno_obj is None:
+            raise PartidaNoEncontradaError(
+                f"Turno {turno} no encontrado en la partida {codigo_partida}"
+            )
+
+        turno_obj.feedback = "incoherente" if incoherente else "ok"
+        self.partidas.upsert(partida)
+        telemetry.record_feedback(incoherente=incoherente)
+        logger.info(
+            "Feedback de turno: codigo=%s, turno=%s, incoherente=%s",
+            codigo_partida,
+            turno,
+            incoherente,
+        )
+        return turno_obj.feedback
+
     def listar_partidas(self) -> list[PartidaResumen]:
         return self.partidas.list_all()
 
@@ -243,7 +279,7 @@ class PartidaService:
         _, parsed = self.foundry.chat_json_raw(system, user)
         descripcion = parsed.get("descripcion") if parsed is not None else None
         if not descripcion or not isinstance(descripcion, str):
-            raise RespuestaLLMInvalida(
+            raise RespuestaLLMInvalidaError(
                 "LLM no devolvió el campo 'descripcion' esperado",
                 detalles={"respuesta": str(parsed)[:200]},
             )
@@ -254,8 +290,8 @@ class PartidaService:
         system_prompt: str,
         user_prompt: str,
         json_schema: dict,
-        modelo_pydantic: type,
-    ):
+        modelo_pydantic: type[_PydanticT],
+    ) -> _PydanticT:
         system_with_schema = (
             f"{system_prompt}\n\n# SCHEMA JSON ESPERADO\n{json.dumps(json_schema, indent=2)}"
         )
@@ -277,7 +313,8 @@ class PartidaService:
         raw2, parsed2 = self.foundry.chat_json_raw(system_prompt, retry_user)
 
         if parsed2 is None:
-            raise RespuestaLLMInvalida(
+            telemetry.record_llm_error(operation="invocar", tipo="json")
+            raise RespuestaLLMInvalidaError(
                 "LLM devolvió JSON inválido en dos intentos",
                 detalles={"ultimo_intento": raw2[:500]},
             )
@@ -286,7 +323,8 @@ class PartidaService:
             validate(parsed2, json_schema)
         except ValidationError as e:
             error_msg = self._summarize_validation_error(e)
-            raise RespuestaLLMInvalida(
+            telemetry.record_llm_error(operation="invocar", tipo="schema")
+            raise RespuestaLLMInvalidaError(
                 f"LLM no respetó el schema tras reintento: {error_msg}",
                 detalles={"ultimo_intento": raw2[:500]},
             ) from e
@@ -317,27 +355,24 @@ class PartidaService:
         if upd.evento_clave:
             ws.eventos_clave.append(upd.evento_clave)
 
-        if upd.npc_encontrado:
-            if not any(n.nombre == upd.npc_encontrado.nombre for n in ws.npcs):
-                try:
-                    actitud = Actitud(upd.npc_encontrado.actitud)
-                except ValueError:
-                    actitud = Actitud.NEUTRAL
-                ws.npcs.append(
-                    NPC(
-                        nombre=upd.npc_encontrado.nombre,
-                        descripcion=upd.npc_encontrado.descripcion,
-                        actitud=actitud,
-                    )
+        if upd.npc_encontrado and not any(n.nombre == upd.npc_encontrado.nombre for n in ws.npcs):
+            try:
+                actitud = Actitud(upd.npc_encontrado.actitud)
+            except ValueError:
+                actitud = Actitud.NEUTRAL
+            ws.npcs.append(
+                NPC(
+                    nombre=upd.npc_encontrado.nombre,
+                    descripcion=upd.npc_encontrado.descripcion,
+                    actitud=actitud,
                 )
+            )
 
         if upd.npc_actitud_cambio:
             for npc in ws.npcs:
                 if npc.nombre == upd.npc_actitud_cambio.nombre:
-                    try:
+                    with contextlib.suppress(ValueError):
                         npc.actitud = Actitud(upd.npc_actitud_cambio.nueva_actitud)
-                    except ValueError:
-                        pass
                     break
 
         if upd.pista_descubierta:
@@ -372,13 +407,13 @@ class PartidaService:
         partida = self.partidas.get(codigo_partida)
 
         if partida.metadata.imagenes_generadas >= self.settings.max_imagenes_por_partida:
-            raise LimiteImagenesExcedido(
+            raise LimiteImagenesExcedidoError(
                 f"La partida alcanzó el máximo de {self.settings.max_imagenes_por_partida} imágenes"
             )
 
         turno = next((t for t in partida.historial if t.turno == turno_num), None)
         if turno is None:
-            raise PartidaNoEncontrada(
+            raise PartidaNoEncontradaError(
                 f"El turno {turno_num} no existe en la partida {codigo_partida}"
             )
 
@@ -386,7 +421,7 @@ class PartidaService:
             return turno.imagen_url
 
         if not turno.descripcion_escena_en:
-            raise RespuestaLLMInvalida(
+            raise RespuestaLLMInvalidaError(
                 f"El turno {turno_num} no tiene descripción de escena para generar imagen"
             )
 
@@ -411,6 +446,16 @@ class PartidaService:
     async def avanzar_turno_stream(
         self, codigo_partida: str, accion: str
     ) -> AsyncGenerator[str, None]:
+        """SSE stream con un span por turno (envuelve la generación interna)."""
+        with telemetry.get_tracer().start_as_current_span("avanzar_turno_stream") as span:
+            span.set_attribute("codigo_partida", codigo_partida)
+            span.set_attribute("prompt_version", PROMPT_VERSION)
+            async for evento in self._avanzar_turno_stream_impl(codigo_partida, accion):
+                yield evento
+
+    async def _avanzar_turno_stream_impl(
+        self, codigo_partida: str, accion: str
+    ) -> AsyncGenerator[str, None]:
         """SSE stream: yields token/turno/imagen/done events."""
 
         def _sse(event: str, data: dict) -> str:
@@ -419,19 +464,20 @@ class PartidaService:
         partida = await asyncio.to_thread(self.partidas.get, codigo_partida)
 
         if partida.metadata.estado == EstadoPartida.FINALIZADA:
-            raise PartidaFinalizada(
+            raise PartidaFinalizadaError(
                 f"La partida {codigo_partida} ya terminó",
                 detalles={"final": partida.metadata.final},
             )
         if partida.metadata.turno_actual >= self.settings.max_turnos_por_partida:
-            raise LimiteTurnosExcedido(
+            raise LimiteTurnosExcedidoError(
                 f"La partida alcanzó el máximo de {self.settings.max_turnos_por_partida} turnos"
             )
 
         logger.info(
-            "Avanzando turno (stream): codigo=%s, turno_actual=%s",
+            "Avanzando turno (stream): codigo=%s, turno_actual=%s, prompt_version=%s",
             codigo_partida,
             partida.metadata.turno_actual,
+            PROMPT_VERSION,
         )
 
         system_with_schema = (
@@ -453,19 +499,21 @@ class PartidaService:
         # Parse completed JSON
         try:
             parsed = json.loads(accumulated)
-        except json.JSONDecodeError:
-            raise RespuestaLLMInvalida(
+        except json.JSONDecodeError as e:
+            telemetry.record_llm_error(operation="chat_stream", tipo="json")
+            raise RespuestaLLMInvalidaError(
                 "Stream LLM devolvió JSON inválido",
                 detalles={"inicio": accumulated[:200]},
-            )
+            ) from e
 
         try:
             validate(parsed, TURNO_JSON_SCHEMA)
         except ValidationError as e:
-            raise RespuestaLLMInvalida(
+            telemetry.record_llm_error(operation="chat_stream", tipo="schema")
+            raise RespuestaLLMInvalidaError(
                 f"JSON del stream no respeta el schema: {self._summarize_validation_error(e)}",
                 detalles={"inicio": accumulated[:200]},
-            )
+            ) from e
 
         turno_llm = TurnoLLMResponse.model_validate(parsed)
 
@@ -489,10 +537,8 @@ class PartidaService:
         if es_final:
             partida.metadata.estado = EstadoPartida.FINALIZADA
             if turno_llm.estado_aventura.final:
-                try:
+                with contextlib.suppress(ValueError):
                     partida.metadata.final = TipoFinal(turno_llm.estado_aventura.final)
-                except ValueError:
-                    pass
             partida.metadata.razon_fin = turno_llm.estado_aventura.razon_fin
 
         await asyncio.to_thread(self.partidas.upsert, partida)

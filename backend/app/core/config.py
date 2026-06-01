@@ -39,8 +39,14 @@ class Settings(BaseSettings):
 
     # App config
     log_level: str = Field(default="INFO")
+    log_format: str = Field(default="json")  # "json" (estructurado) o "text" (dev)
     max_turnos_por_partida: int = Field(default=25)
     max_imagenes_por_partida: int = Field(default=25)
+
+    # Reintentos de transporte ante errores transitorios de Azure (red/5xx/429).
+    # No aplica a errores de schema, que reintenta PartidaService por separado.
+    llm_max_retries: int = Field(default=2)
+    llm_retry_base_delay: float = Field(default=0.5)
     cors_origins: str = Field(default="http://localhost:3000,http://localhost:5173")
 
     @property

@@ -151,7 +151,7 @@ CREACION_JSON_SCHEMA: dict[str, Any] = {
 class GenerarImagen(BaseModel):
     necesaria: bool
     razon: str | None = None
-    descripcion_escena_en: str | None = None
+    descripcion_escena_en: str = ""
 
 
 class NPCEncontrado(BaseModel):

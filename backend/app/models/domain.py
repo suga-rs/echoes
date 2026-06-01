@@ -1,29 +1,29 @@
 """Modelos de dominio."""
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 
-class Genero(str, Enum):
+class Genero(StrEnum):
     FANTASIA = "fantasía"
     CIENCIA_FICCION = "ciencia ficción"
     TERROR = "terror"
 
 
-class Actitud(str, Enum):
+class Actitud(StrEnum):
     AMISTOSA = "amistosa"
     NEUTRAL = "neutral"
     HOSTIL = "hostil"
 
 
-class EstadoPartida(str, Enum):
+class EstadoPartida(StrEnum):
     EN_CURSO = "en_curso"
     FINALIZADA = "finalizada"
 
 
-class TipoFinal(str, Enum):
+class TipoFinal(StrEnum):
     EXITO = "exito"
     FRACASO = "fracaso"
     AMBIGUO = "ambiguo"
@@ -57,6 +57,7 @@ class TurnoHistorial(BaseModel):
     opciones: list[str]
     imagen_url: str | None = None
     descripcion_escena_en: str | None = None
+    feedback: str | None = None  # señal de calidad del jugador: "incoherente" | "ok"
 
 
 class MetadataPartida(BaseModel):
@@ -67,6 +68,9 @@ class MetadataPartida(BaseModel):
     final: TipoFinal | None = None
     razon_fin: str | None = None
     imagenes_generadas: int = 0
+    # Versión de prompts/contrato con la que se creó la partida (auditoría).
+    # Las partidas previas sin el campo deserializan como None (Cosmos schemaless).
+    prompt_version: str | None = None
 
 
 class Partida(BaseModel):
@@ -88,6 +92,14 @@ class StartPartidaRequest(BaseModel):
 
 class TurnoRequest(BaseModel):
     accion: str = Field(..., min_length=1, max_length=200)
+
+
+class FeedbackRequest(BaseModel):
+    incoherente: bool
+
+
+class FeedbackResponse(BaseModel):
+    feedback: str | None
 
 
 class TurnoResponse(BaseModel):

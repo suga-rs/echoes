@@ -99,14 +99,25 @@ def test_avanzar_turno(client_con_servicio_mockeado):
 
 
 def test_partida_no_encontrada_devuelve_404(client_con_servicio_mockeado):
-    from app.core.exceptions import PartidaNoEncontrada
+    from app.core.exceptions import PartidaNoEncontradaError
 
     client, svc = client_con_servicio_mockeado
-    svc.get_partida.side_effect = PartidaNoEncontrada("No existe")
+    svc.get_partida.side_effect = PartidaNoEncontradaError("No existe")
 
     r = client.get("/api/partidas/fake-code/state")
     assert r.status_code == 404
     assert r.json()["code"] == "partida_no_encontrada"
+
+
+def test_feedback_endpoint(client_con_servicio_mockeado):
+    client, svc = client_con_servicio_mockeado
+    svc.registrar_feedback.return_value = "incoherente"
+
+    r = client.post("/api/partidas/abc/turn/2/feedback", json={"incoherente": True})
+
+    assert r.status_code == 200
+    assert r.json()["feedback"] == "incoherente"
+    svc.registrar_feedback.assert_called_once_with("abc", 2, True)
 
 
 def test_state_endpoint(client_con_servicio_mockeado):
