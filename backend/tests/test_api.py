@@ -99,10 +99,10 @@ def test_avanzar_turno(client_con_servicio_mockeado):
 
 
 def test_partida_no_encontrada_devuelve_404(client_con_servicio_mockeado):
-    from app.core.exceptions import PartidaNoEncontrada
+    from app.core.exceptions import PartidaNoEncontradaError
 
     client, svc = client_con_servicio_mockeado
-    svc.get_partida.side_effect = PartidaNoEncontrada("No existe")
+    svc.get_partida.side_effect = PartidaNoEncontradaError("No existe")
 
     r = client.get("/api/partidas/fake-code/state")
     assert r.status_code == 404

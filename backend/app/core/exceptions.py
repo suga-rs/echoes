@@ -11,32 +11,32 @@ class AppError(Exception):
         self.detalles = detalles or {}
 
 
-class PartidaNoEncontrada(AppError):
+class PartidaNoEncontradaError(AppError):
     status_code = 404
     code = "partida_no_encontrada"
 
 
-class PartidaFinalizada(AppError):
+class PartidaFinalizadaError(AppError):
     status_code = 409
     code = "partida_finalizada"
 
 
-class LimiteTurnosExcedido(AppError):
+class LimiteTurnosExcedidoError(AppError):
     status_code = 409
     code = "limite_turnos_excedido"
 
 
-class LimiteImagenesExcedido(AppError):
+class LimiteImagenesExcedidoError(AppError):
     status_code = 409
     code = "limite_imagenes_excedido"
 
 
-class RespuestaLLMInvalida(AppError):
+class RespuestaLLMInvalidaError(AppError):
     status_code = 502
     code = "respuesta_llm_invalida"
 
 
-class ContenidoInapropiado(AppError):
+class ContenidoInapropiadoError(AppError):
     status_code = 422
     code = "contenido_inapropiado"
 

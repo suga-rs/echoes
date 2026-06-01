@@ -1,29 +1,29 @@
 """Modelos de dominio."""
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 
-class Genero(str, Enum):
+class Genero(StrEnum):
     FANTASIA = "fantasía"
     CIENCIA_FICCION = "ciencia ficción"
     TERROR = "terror"
 
 
-class Actitud(str, Enum):
+class Actitud(StrEnum):
     AMISTOSA = "amistosa"
     NEUTRAL = "neutral"
     HOSTIL = "hostil"
 
 
-class EstadoPartida(str, Enum):
+class EstadoPartida(StrEnum):
     EN_CURSO = "en_curso"
     FINALIZADA = "finalizada"
 
 
-class TipoFinal(str, Enum):
+class TipoFinal(StrEnum):
     EXITO = "exito"
     FRACASO = "fracaso"
     AMBIGUO = "ambiguo"

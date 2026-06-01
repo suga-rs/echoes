@@ -4,11 +4,11 @@ import pytest
 
 from app.core.exceptions import (
     FoundryError,
-    LimiteImagenesExcedido,
-    LimiteTurnosExcedido,
-    PartidaFinalizada,
-    PartidaNoEncontrada,
-    RespuestaLLMInvalida,
+    LimiteImagenesExcedidoError,
+    LimiteTurnosExcedidoError,
+    PartidaFinalizadaError,
+    PartidaNoEncontradaError,
+    RespuestaLLMInvalidaError,
 )
 from app.models.domain import EstadoPartida, Genero, TurnoHistorial
 from app.services.partida_service import PartidaService
@@ -104,7 +104,7 @@ def test_crear_partida_falla_si_llm_no_genera_json_valido_dos_veces(
     svc = PartidaService(
         foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
     )
-    with pytest.raises(RespuestaLLMInvalida):
+    with pytest.raises(RespuestaLLMInvalidaError):
         svc.crear_partida(Genero.FANTASIA, "una guerrera valiente")
     assert foundry_mock.chat_json_raw.call_count == 2
 
@@ -207,7 +207,7 @@ def test_partida_finalizada_rechaza_nuevos_turnos(
     svc = PartidaService(
         foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
     )
-    with pytest.raises(PartidaFinalizada):
+    with pytest.raises(PartidaFinalizadaError):
         svc.avanzar_turno("test-abc-123", "cualquier cosa")
 
 
@@ -245,7 +245,7 @@ def test_limite_turnos_excedido(
     svc = PartidaService(
         foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
     )
-    with pytest.raises(LimiteTurnosExcedido):
+    with pytest.raises(LimiteTurnosExcedidoError):
         svc.avanzar_turno("test-abc-123", "Avanzar")
 
 
@@ -358,7 +358,7 @@ def test_generar_imagen_turno_limite_excedido(
     svc = PartidaService(
         foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
     )
-    with pytest.raises(LimiteImagenesExcedido):
+    with pytest.raises(LimiteImagenesExcedidoError):
         svc.generar_imagen_turno("test-abc-123", 2)
     foundry_mock.generar_imagen.assert_not_called()
 
@@ -375,7 +375,7 @@ def test_generar_imagen_turno_inexistente(
     svc = PartidaService(
         foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
     )
-    with pytest.raises(PartidaNoEncontrada):
+    with pytest.raises(PartidaNoEncontradaError):
         svc.generar_imagen_turno("test-abc-123", 99)
 
 
@@ -393,7 +393,7 @@ def test_generar_imagen_turno_sin_descripcion(
     svc = PartidaService(
         foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
     )
-    with pytest.raises(RespuestaLLMInvalida):
+    with pytest.raises(RespuestaLLMInvalidaError):
         svc.generar_imagen_turno("test-abc-123", 2)
 
 

@@ -18,6 +18,10 @@ os.environ.setdefault(
     "DefaultEndpointsProtocol=https;AccountName=fakestorage;"
     "AccountKey=fake;EndpointSuffix=core.windows.net",
 )
+# Fijamos los límites para que los tests sean herméticos y no dependan del
+# .env local del desarrollador (las env vars tienen prioridad sobre .env).
+os.environ.setdefault("MAX_TURNOS_POR_PARTIDA", "25")
+os.environ.setdefault("MAX_IMAGENES_POR_PARTIDA", "25")
 
 from app.models.domain import (
     EstadoPartida,

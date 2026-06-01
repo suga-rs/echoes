@@ -1,6 +1,7 @@
 """Endpoints HTTP de partidas."""
 
 import json
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
 from fastapi.responses import StreamingResponse
@@ -28,7 +29,7 @@ router = APIRouter(prefix="/api/partidas", tags=["partidas"])
 
 @router.get("", response_model=list[PartidaResumen])
 def listar_partidas(
-    service: PartidaService = Depends(get_partida_service),
+    service: Annotated[PartidaService, Depends(get_partida_service)],
 ) -> list[PartidaResumen]:
     return service.listar_partidas()
 
@@ -36,7 +37,7 @@ def listar_partidas(
 @router.post("/random-description", response_model=RandomDescriptionResponse)
 def random_description(
     body: RandomDescriptionRequest,
-    service: PartidaService = Depends(get_partida_service),
+    service: Annotated[PartidaService, Depends(get_partida_service)],
 ) -> RandomDescriptionResponse:
     descripcion = service.generar_descripcion_aleatoria(body.genero)
     return RandomDescriptionResponse(descripcion=descripcion)
@@ -45,7 +46,7 @@ def random_description(
 @router.post("/start", response_model=StartResponse, status_code=status.HTTP_201_CREATED)
 def start_partida(
     body: StartPartidaRequest,
-    service: PartidaService = Depends(get_partida_service),
+    service: Annotated[PartidaService, Depends(get_partida_service)],
 ) -> StartResponse:
     return service.crear_partida(
         genero=body.genero,
@@ -57,7 +58,7 @@ def start_partida(
 def avanzar_turno(
     codigo: str,
     body: TurnoRequest,
-    service: PartidaService = Depends(get_partida_service),
+    service: Annotated[PartidaService, Depends(get_partida_service)],
 ) -> TurnoResponse:
     return service.avanzar_turno(codigo, body.accion)
 
@@ -66,7 +67,7 @@ def avanzar_turno(
 def generar_imagen_turno(
     codigo: str,
     turno: int,
-    service: PartidaService = Depends(get_partida_service),
+    service: Annotated[PartidaService, Depends(get_partida_service)],
 ) -> ImagenTurnoResponse:
     imagen_url = service.generar_imagen_turno(codigo, turno)
     return ImagenTurnoResponse(imagen_url=imagen_url)
@@ -80,7 +81,7 @@ def _sse(event: str, data: dict) -> str:
 async def avanzar_turno_stream(
     codigo: str,
     body: TurnoRequest,
-    service: PartidaService = Depends(get_partida_service),
+    service: Annotated[PartidaService, Depends(get_partida_service)],
 ) -> StreamingResponse:
     async def generate():
         try:
@@ -102,7 +103,7 @@ async def avanzar_turno_stream(
 @router.get("/{codigo}/resume")
 def resume_partida(
     codigo: str,
-    service: PartidaService = Depends(get_partida_service),
+    service: Annotated[PartidaService, Depends(get_partida_service)],
 ):
     return service.get_partida(codigo)
 
@@ -110,7 +111,7 @@ def resume_partida(
 @router.get("/{codigo}/state", response_model=StateResponse)
 def get_state(
     codigo: str,
-    service: PartidaService = Depends(get_partida_service),
+    service: Annotated[PartidaService, Depends(get_partida_service)],
 ) -> StateResponse:
     p = service.get_partida(codigo)
     return StateResponse(

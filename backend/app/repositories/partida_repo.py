@@ -5,7 +5,7 @@ from azure.cosmos.container import ContainerProxy
 from azure.identity import DefaultAzureCredential
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import PartidaNoEncontrada
+from app.core.exceptions import PartidaNoEncontradaError
 from app.core.logging import get_logger
 from app.models.domain import Partida, PartidaResumen
 
@@ -33,7 +33,9 @@ class PartidaRepository:
         try:
             doc = self._container.read_item(item=codigo_partida, partition_key=codigo_partida)
         except exceptions.CosmosResourceNotFoundError as e:
-            raise PartidaNoEncontrada(f"No existe partida con código '{codigo_partida}'") from e
+            raise PartidaNoEncontradaError(
+                f"No existe partida con código '{codigo_partida}'"
+            ) from e
         return Partida.model_validate(doc)
 
     def upsert(self, partida: Partida) -> Partida:
@@ -49,10 +51,7 @@ class PartidaRepository:
             FROM c
             ORDER BY c.metadata.creada_en DESC
         """
-        items = list(self._container.query_items(
-            query=query,
-            enable_cross_partition_query=True
-        ))
+        items = list(self._container.query_items(query=query, enable_cross_partition_query=True))
         return [PartidaResumen.model_validate(item) for item in items]
 
     def exists(self, codigo_partida: str) -> bool:

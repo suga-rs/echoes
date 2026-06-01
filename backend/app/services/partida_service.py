@@ -1,22 +1,25 @@
 """Servicio de partidas: orquesta LLM, imagen, persistencia."""
 
 import asyncio
+import contextlib
 import json
 import random
 import secrets
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
+from typing import TypeVar
 
 from jsonschema import ValidationError, validate
+from pydantic import BaseModel
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import (
     FoundryError,
-    LimiteImagenesExcedido,
-    LimiteTurnosExcedido,
-    PartidaFinalizada,
-    PartidaNoEncontrada,
-    RespuestaLLMInvalida,
+    LimiteImagenesExcedidoError,
+    LimiteTurnosExcedidoError,
+    PartidaFinalizadaError,
+    PartidaNoEncontradaError,
+    RespuestaLLMInvalidaError,
 )
 from app.core.logging import get_logger
 from app.models.domain import (
@@ -53,6 +56,8 @@ from app.services.prompts import (
 )
 
 logger = get_logger("service.partidas")
+
+_PydanticT = TypeVar("_PydanticT", bound=BaseModel)
 
 _TIPOS_ACCION: dict[str, list[str]] = {
     "confrontacion": ["confrontar directamente", "engañar", "intimidar"],
@@ -150,13 +155,13 @@ class PartidaService:
         partida = self.partidas.get(codigo_partida)
 
         if partida.metadata.estado == EstadoPartida.FINALIZADA:
-            raise PartidaFinalizada(
+            raise PartidaFinalizadaError(
                 f"La partida {codigo_partida} ya terminó",
                 detalles={"final": partida.metadata.final},
             )
 
         if partida.metadata.turno_actual >= self.settings.max_turnos_por_partida:
-            raise LimiteTurnosExcedido(
+            raise LimiteTurnosExcedidoError(
                 f"La partida alcanzó el máximo de {self.settings.max_turnos_por_partida} turnos"
             )
 
@@ -207,10 +212,8 @@ class PartidaService:
         if turno_llm.estado_aventura.tipo == "finalizada":
             partida.metadata.estado = EstadoPartida.FINALIZADA
             if turno_llm.estado_aventura.final:
-                try:
+                with contextlib.suppress(ValueError):
                     partida.metadata.final = TipoFinal(turno_llm.estado_aventura.final)
-                except ValueError:
-                    pass
             partida.metadata.razon_fin = turno_llm.estado_aventura.razon_fin
 
         self.partidas.upsert(partida)
@@ -243,7 +246,7 @@ class PartidaService:
         _, parsed = self.foundry.chat_json_raw(system, user)
         descripcion = parsed.get("descripcion") if parsed is not None else None
         if not descripcion or not isinstance(descripcion, str):
-            raise RespuestaLLMInvalida(
+            raise RespuestaLLMInvalidaError(
                 "LLM no devolvió el campo 'descripcion' esperado",
                 detalles={"respuesta": str(parsed)[:200]},
             )
@@ -254,8 +257,8 @@ class PartidaService:
         system_prompt: str,
         user_prompt: str,
         json_schema: dict,
-        modelo_pydantic: type,
-    ):
+        modelo_pydantic: type[_PydanticT],
+    ) -> _PydanticT:
         system_with_schema = (
             f"{system_prompt}\n\n# SCHEMA JSON ESPERADO\n{json.dumps(json_schema, indent=2)}"
         )
@@ -277,7 +280,7 @@ class PartidaService:
         raw2, parsed2 = self.foundry.chat_json_raw(system_prompt, retry_user)
 
         if parsed2 is None:
-            raise RespuestaLLMInvalida(
+            raise RespuestaLLMInvalidaError(
                 "LLM devolvió JSON inválido en dos intentos",
                 detalles={"ultimo_intento": raw2[:500]},
             )
@@ -286,7 +289,7 @@ class PartidaService:
             validate(parsed2, json_schema)
         except ValidationError as e:
             error_msg = self._summarize_validation_error(e)
-            raise RespuestaLLMInvalida(
+            raise RespuestaLLMInvalidaError(
                 f"LLM no respetó el schema tras reintento: {error_msg}",
                 detalles={"ultimo_intento": raw2[:500]},
             ) from e
@@ -317,27 +320,24 @@ class PartidaService:
         if upd.evento_clave:
             ws.eventos_clave.append(upd.evento_clave)
 
-        if upd.npc_encontrado:
-            if not any(n.nombre == upd.npc_encontrado.nombre for n in ws.npcs):
-                try:
-                    actitud = Actitud(upd.npc_encontrado.actitud)
-                except ValueError:
-                    actitud = Actitud.NEUTRAL
-                ws.npcs.append(
-                    NPC(
-                        nombre=upd.npc_encontrado.nombre,
-                        descripcion=upd.npc_encontrado.descripcion,
-                        actitud=actitud,
-                    )
+        if upd.npc_encontrado and not any(n.nombre == upd.npc_encontrado.nombre for n in ws.npcs):
+            try:
+                actitud = Actitud(upd.npc_encontrado.actitud)
+            except ValueError:
+                actitud = Actitud.NEUTRAL
+            ws.npcs.append(
+                NPC(
+                    nombre=upd.npc_encontrado.nombre,
+                    descripcion=upd.npc_encontrado.descripcion,
+                    actitud=actitud,
                 )
+            )
 
         if upd.npc_actitud_cambio:
             for npc in ws.npcs:
                 if npc.nombre == upd.npc_actitud_cambio.nombre:
-                    try:
+                    with contextlib.suppress(ValueError):
                         npc.actitud = Actitud(upd.npc_actitud_cambio.nueva_actitud)
-                    except ValueError:
-                        pass
                     break
 
         if upd.pista_descubierta:
@@ -372,13 +372,13 @@ class PartidaService:
         partida = self.partidas.get(codigo_partida)
 
         if partida.metadata.imagenes_generadas >= self.settings.max_imagenes_por_partida:
-            raise LimiteImagenesExcedido(
+            raise LimiteImagenesExcedidoError(
                 f"La partida alcanzó el máximo de {self.settings.max_imagenes_por_partida} imágenes"
             )
 
         turno = next((t for t in partida.historial if t.turno == turno_num), None)
         if turno is None:
-            raise PartidaNoEncontrada(
+            raise PartidaNoEncontradaError(
                 f"El turno {turno_num} no existe en la partida {codigo_partida}"
             )
 
@@ -386,7 +386,7 @@ class PartidaService:
             return turno.imagen_url
 
         if not turno.descripcion_escena_en:
-            raise RespuestaLLMInvalida(
+            raise RespuestaLLMInvalidaError(
                 f"El turno {turno_num} no tiene descripción de escena para generar imagen"
             )
 
@@ -419,12 +419,12 @@ class PartidaService:
         partida = await asyncio.to_thread(self.partidas.get, codigo_partida)
 
         if partida.metadata.estado == EstadoPartida.FINALIZADA:
-            raise PartidaFinalizada(
+            raise PartidaFinalizadaError(
                 f"La partida {codigo_partida} ya terminó",
                 detalles={"final": partida.metadata.final},
             )
         if partida.metadata.turno_actual >= self.settings.max_turnos_por_partida:
-            raise LimiteTurnosExcedido(
+            raise LimiteTurnosExcedidoError(
                 f"La partida alcanzó el máximo de {self.settings.max_turnos_por_partida} turnos"
             )
 
@@ -453,19 +453,19 @@ class PartidaService:
         # Parse completed JSON
         try:
             parsed = json.loads(accumulated)
-        except json.JSONDecodeError:
-            raise RespuestaLLMInvalida(
+        except json.JSONDecodeError as e:
+            raise RespuestaLLMInvalidaError(
                 "Stream LLM devolvió JSON inválido",
                 detalles={"inicio": accumulated[:200]},
-            )
+            ) from e
 
         try:
             validate(parsed, TURNO_JSON_SCHEMA)
         except ValidationError as e:
-            raise RespuestaLLMInvalida(
+            raise RespuestaLLMInvalidaError(
                 f"JSON del stream no respeta el schema: {self._summarize_validation_error(e)}",
                 detalles={"inicio": accumulated[:200]},
-            )
+            ) from e
 
         turno_llm = TurnoLLMResponse.model_validate(parsed)
 
@@ -489,10 +489,8 @@ class PartidaService:
         if es_final:
             partida.metadata.estado = EstadoPartida.FINALIZADA
             if turno_llm.estado_aventura.final:
-                try:
+                with contextlib.suppress(ValueError):
                     partida.metadata.final = TipoFinal(turno_llm.estado_aventura.final)
-                except ValueError:
-                    pass
             partida.metadata.razon_fin = turno_llm.estado_aventura.razon_fin
 
         await asyncio.to_thread(self.partidas.upsert, partida)
