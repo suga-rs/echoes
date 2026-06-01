@@ -47,6 +47,7 @@ from app.repositories.imagen_repo import ImagenRepository
 from app.repositories.partida_repo import PartidaRepository
 from app.services.foundry_client import FoundryClient
 from app.services.prompts import (
+    PROMPT_VERSION,
     SYSTEM_PROMPT_CREACION,
     SYSTEM_PROMPT_TURNO,
     build_creacion_user_prompt,
@@ -81,7 +82,7 @@ class PartidaService:
         self.imagenes = imagenes or ImagenRepository(self.settings)
 
     def crear_partida(self, genero: Genero, descripcion_personaje: str) -> StartResponse:
-        logger.info("Creando partida: genero=%s", genero.value)
+        logger.info("Creando partida: genero=%s, prompt_version=%s", genero.value, PROMPT_VERSION)
 
         system = SYSTEM_PROMPT_CREACION
         user = build_creacion_user_prompt(genero, descripcion_personaje)
@@ -105,6 +106,7 @@ class PartidaService:
             creada_en=datetime.now(UTC),
             turno_actual=1,
             estado=EstadoPartida.EN_CURSO,
+            prompt_version=PROMPT_VERSION,
         )
 
         imagen_url = self._generar_imagen_segura(
@@ -166,9 +168,10 @@ class PartidaService:
             )
 
         logger.info(
-            "Avanzando turno: codigo=%s, turno_actual=%s",
+            "Avanzando turno: codigo=%s, turno_actual=%s, prompt_version=%s",
             codigo_partida,
             partida.metadata.turno_actual,
+            PROMPT_VERSION,
         )
 
         system = SYSTEM_PROMPT_TURNO
@@ -429,9 +432,10 @@ class PartidaService:
             )
 
         logger.info(
-            "Avanzando turno (stream): codigo=%s, turno_actual=%s",
+            "Avanzando turno (stream): codigo=%s, turno_actual=%s, prompt_version=%s",
             codigo_partida,
             partida.metadata.turno_actual,
+            PROMPT_VERSION,
         )
 
         system_with_schema = (

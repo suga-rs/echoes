@@ -47,6 +47,7 @@ select = ["E", "F", "I", "N", "UP", "B", "SIM"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+pythonpath = ["tests"]
 addopts = "--cov=app --cov-report=term-missing --cov-fail-under=60"
 
 [tool.coverage.run]

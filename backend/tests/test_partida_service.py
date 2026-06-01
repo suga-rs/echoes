@@ -1,6 +1,7 @@
 """Tests del PartidaService con todas las dependencias mockeadas."""
 
 import pytest
+from factories import fake_creacion_llm_response, fake_turno_llm_response
 
 from app.core.exceptions import (
     FoundryError,
@@ -12,70 +13,7 @@ from app.core.exceptions import (
 )
 from app.models.domain import EstadoPartida, Genero, TurnoHistorial
 from app.services.partida_service import PartidaService
-
-
-def fake_turno_llm_response(
-    *,
-    necesaria_imagen: bool = False,
-    estado: str = "en_curso",
-    final: str | None = None,
-) -> dict:
-    return {
-        "narrativa": (
-            "Avanzás por el pasillo oscuro. El aire huele a humedad. "
-            "Una vela parpadea al fondo, dibujando sombras en las paredes."
-        ),
-        "opciones": [
-            "Acercarme a la vela con cautela",
-            "Llamar para ver si alguien responde",
-            "Regresar a la entrada",
-        ],
-        "actualizaciones_estado": {
-            "ubicacion_nueva": None,
-            "agregar_inventario": [],
-            "quitar_inventario": [],
-            "evento_clave": None,
-            "npc_encontrado": None,
-            "npc_actitud_cambio": None,
-            "pista_descubierta": None,
-        },
-        "generar_imagen": {
-            "necesaria": necesaria_imagen,
-            "descripcion_escena_en": "A dark corridor lit by a flickering candle",
-        },
-        "estado_aventura": {
-            "tipo": estado,
-            "final": final,
-            "razon_fin": "Test fin" if final else None,
-        },
-    }
-
-
-def fake_creacion_llm_response() -> dict:
-    return {
-        "personaje": {
-            "nombre": "Lyra",
-            "descripcion_narrativa": "Arqueóloga escéptica de 40 años.",
-            "descripcion_visual_en": (
-                "Woman around 40, Mediterranean features, dark brown wavy hair to "
-                "shoulders, hazel eyes, athletic build. Olive canvas field jacket "
-                "with leather elbow patches, khaki cargo pants, brown leather boots."
-            ),
-            "inventario_inicial": ["linterna", "diario"],
-        },
-        "world_state_inicial": {
-            "ubicacion_inicial": "Entrada de la cripta",
-            "objetivo": "Encontrar el corazón de la montaña",
-        },
-        "primera_escena": {
-            "narrativa": (
-                "Descendés los escalones de piedra. El aire se vuelve denso. "
-                "Al fondo, una luz tenue."
-            ),
-            "opciones": ["Encender la linterna", "Avanzar en silencio", "Llamar"],
-            "descripcion_imagen_en": "Stone staircase descending into a dark crypt",
-        },
-    }
+from app.services.prompts import PROMPT_VERSION
 
 
 def test_crear_partida_ok(foundry_mock, partida_repo_mock, imagen_repo_mock):
@@ -93,6 +31,20 @@ def test_crear_partida_ok(foundry_mock, partida_repo_mock, imagen_repo_mock):
     assert resp.primer_turno.imagen_url == "https://fake.blob/x.png"
     assert len(resp.primer_turno.opciones) == 3
     partida_repo_mock.upsert.assert_called_once()
+
+
+def test_crear_partida_persiste_prompt_version(foundry_mock, partida_repo_mock, imagen_repo_mock):
+    foundry_mock.chat_json_raw.return_value = ("{}", fake_creacion_llm_response())
+    foundry_mock.generar_imagen.return_value = b"\x89PNG" + b"\x00" * 100
+    imagen_repo_mock.subir_imagen.return_value = "https://fake.blob/x.png"
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    svc.crear_partida(Genero.FANTASIA, "una arqueóloga escéptica")
+
+    guardada = partida_repo_mock.upsert.call_args[0][0]
+    assert guardada.metadata.prompt_version == PROMPT_VERSION
 
 
 def test_crear_partida_falla_si_llm_no_genera_json_valido_dos_veces(

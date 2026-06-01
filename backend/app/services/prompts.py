@@ -2,6 +2,12 @@
 
 from app.models.domain import Genero, Partida
 
+# Versión de los prompts + contrato JSON. Bumpear al cambiar cualquier
+# SYSTEM_PROMPT_* o los schemas en llm_schema.py. Se loguea en cada llamada al
+# LLM y se persiste en la metadata de cada partida para poder correlacionar
+# calidad/fallos con la versión activa. Ver changelog en docs/prompts.md.
+PROMPT_VERSION = "1.0.0"
+
 SYSTEM_PROMPT_TURNO = """\
 Sos el narrador de una aventura de texto interactiva en español rioplatense. \
 Tu rol es generar una historia inmersiva, coherente y adaptativa que responde \

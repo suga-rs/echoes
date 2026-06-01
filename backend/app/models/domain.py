@@ -67,6 +67,9 @@ class MetadataPartida(BaseModel):
     final: TipoFinal | None = None
     razon_fin: str | None = None
     imagenes_generadas: int = 0
+    # Versión de prompts/contrato con la que se creó la partida (auditoría).
+    # Las partidas previas sin el campo deserializan como None (Cosmos schemaless).
+    prompt_version: str | None = None
 
 
 class Partida(BaseModel):

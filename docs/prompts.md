@@ -681,8 +681,14 @@ Esto es la base para detectar patrones (¿siempre falla con descripciones de per
 
 ## Changelog
 
+> La versión activa vive en código como `PROMPT_VERSION` en
+> [`backend/app/services/prompts.py`](../backend/app/services/prompts.py). Se loguea en cada
+> llamada al LLM y se persiste en la metadata de cada partida. Bumpear esta constante (y agregar
+> una fila acá) cada vez que cambie un `SYSTEM_PROMPT_*` o un schema en `llm_schema.py`.
+
 | Versión | Fecha | Cambio |
 |---|---|---|
+| 1.0.0 | 2026-06-01 | `PROMPT_VERSION` agregada en código, logueada y persistida en la partida. |
 | 1.0 | 2026-05-11 | Versión inicial. Sin pruebas con sesiones reales. |
 
 ---
