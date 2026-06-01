@@ -10,6 +10,8 @@ from app.api.dependencies import get_partida_service
 from app.core.exceptions import AppError
 from app.core.logging import get_logger
 from app.models.domain import (
+    FeedbackRequest,
+    FeedbackResponse,
     ImagenTurnoResponse,
     PartidaResumen,
     RandomDescriptionRequest,
@@ -71,6 +73,17 @@ def generar_imagen_turno(
 ) -> ImagenTurnoResponse:
     imagen_url = service.generar_imagen_turno(codigo, turno)
     return ImagenTurnoResponse(imagen_url=imagen_url)
+
+
+@router.post("/{codigo}/turn/{turno}/feedback", response_model=FeedbackResponse)
+def registrar_feedback(
+    codigo: str,
+    turno: int,
+    body: FeedbackRequest,
+    service: Annotated[PartidaService, Depends(get_partida_service)],
+) -> FeedbackResponse:
+    feedback = service.registrar_feedback(codigo, turno, body.incoherente)
+    return FeedbackResponse(feedback=feedback)
 
 
 def _sse(event: str, data: dict) -> str:

@@ -39,6 +39,7 @@ class Settings(BaseSettings):
 
     # App config
     log_level: str = Field(default="INFO")
+    log_format: str = Field(default="json")  # "json" (estructurado) o "text" (dev)
     max_turnos_por_partida: int = Field(default=25)
     max_imagenes_por_partida: int = Field(default=25)
 

@@ -12,6 +12,7 @@ from typing import TypeVar
 from jsonschema import ValidationError, validate
 from pydantic import BaseModel
 
+from app.core import telemetry
 from app.core.config import Settings, get_settings
 from app.core.exceptions import (
     FoundryError,
@@ -81,7 +82,9 @@ class PartidaService:
         self.partidas = partidas or PartidaRepository(self.settings)
         self.imagenes = imagenes or ImagenRepository(self.settings)
 
+    @telemetry.traced("crear_partida")
     def crear_partida(self, genero: Genero, descripcion_personaje: str) -> StartResponse:
+        telemetry.add_span_attributes(genero=genero.value, prompt_version=PROMPT_VERSION)
         logger.info("Creando partida: genero=%s, prompt_version=%s", genero.value, PROMPT_VERSION)
 
         system = SYSTEM_PROMPT_CREACION
@@ -153,8 +156,15 @@ class PartidaService:
             ),
         )
 
+    @telemetry.traced("avanzar_turno")
     def avanzar_turno(self, codigo_partida: str, accion: str) -> TurnoResponse:
         partida = self.partidas.get(codigo_partida)
+        telemetry.add_span_attributes(
+            codigo_partida=codigo_partida,
+            turno=partida.metadata.turno_actual,
+            genero=partida.metadata.genero.value,
+            prompt_version=PROMPT_VERSION,
+        )
 
         if partida.metadata.estado == EstadoPartida.FINALIZADA:
             raise PartidaFinalizadaError(
@@ -234,6 +244,26 @@ class PartidaService:
     def get_partida(self, codigo_partida: str) -> Partida:
         return self.partidas.get(codigo_partida)
 
+    def registrar_feedback(self, codigo_partida: str, turno: int, incoherente: bool) -> str:
+        """Marca un turno con feedback de calidad del jugador y lo persiste."""
+        partida = self.partidas.get(codigo_partida)
+        turno_obj = next((t for t in partida.historial if t.turno == turno), None)
+        if turno_obj is None:
+            raise PartidaNoEncontradaError(
+                f"Turno {turno} no encontrado en la partida {codigo_partida}"
+            )
+
+        turno_obj.feedback = "incoherente" if incoherente else "ok"
+        self.partidas.upsert(partida)
+        telemetry.record_feedback(incoherente=incoherente)
+        logger.info(
+            "Feedback de turno: codigo=%s, turno=%s, incoherente=%s",
+            codigo_partida,
+            turno,
+            incoherente,
+        )
+        return turno_obj.feedback
+
     def listar_partidas(self) -> list[PartidaResumen]:
         return self.partidas.list_all()
 
@@ -283,6 +313,7 @@ class PartidaService:
         raw2, parsed2 = self.foundry.chat_json_raw(system_prompt, retry_user)
 
         if parsed2 is None:
+            telemetry.record_llm_error(operation="invocar", tipo="json")
             raise RespuestaLLMInvalidaError(
                 "LLM devolvió JSON inválido en dos intentos",
                 detalles={"ultimo_intento": raw2[:500]},
@@ -292,6 +323,7 @@ class PartidaService:
             validate(parsed2, json_schema)
         except ValidationError as e:
             error_msg = self._summarize_validation_error(e)
+            telemetry.record_llm_error(operation="invocar", tipo="schema")
             raise RespuestaLLMInvalidaError(
                 f"LLM no respetó el schema tras reintento: {error_msg}",
                 detalles={"ultimo_intento": raw2[:500]},
@@ -414,6 +446,16 @@ class PartidaService:
     async def avanzar_turno_stream(
         self, codigo_partida: str, accion: str
     ) -> AsyncGenerator[str, None]:
+        """SSE stream con un span por turno (envuelve la generación interna)."""
+        with telemetry.get_tracer().start_as_current_span("avanzar_turno_stream") as span:
+            span.set_attribute("codigo_partida", codigo_partida)
+            span.set_attribute("prompt_version", PROMPT_VERSION)
+            async for evento in self._avanzar_turno_stream_impl(codigo_partida, accion):
+                yield evento
+
+    async def _avanzar_turno_stream_impl(
+        self, codigo_partida: str, accion: str
+    ) -> AsyncGenerator[str, None]:
         """SSE stream: yields token/turno/imagen/done events."""
 
         def _sse(event: str, data: dict) -> str:
@@ -458,6 +500,7 @@ class PartidaService:
         try:
             parsed = json.loads(accumulated)
         except json.JSONDecodeError as e:
+            telemetry.record_llm_error(operation="chat_stream", tipo="json")
             raise RespuestaLLMInvalidaError(
                 "Stream LLM devolvió JSON inválido",
                 detalles={"inicio": accumulated[:200]},
@@ -466,6 +509,7 @@ class PartidaService:
         try:
             validate(parsed, TURNO_JSON_SCHEMA)
         except ValidationError as e:
+            telemetry.record_llm_error(operation="chat_stream", tipo="schema")
             raise RespuestaLLMInvalidaError(
                 f"JSON del stream no respeta el schema: {self._summarize_validation_error(e)}",
                 detalles={"inicio": accumulated[:200]},

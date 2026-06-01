@@ -57,6 +57,7 @@ class TurnoHistorial(BaseModel):
     opciones: list[str]
     imagen_url: str | None = None
     descripcion_escena_en: str | None = None
+    feedback: str | None = None  # señal de calidad del jugador: "incoherente" | "ok"
 
 
 class MetadataPartida(BaseModel):
@@ -91,6 +92,14 @@ class StartPartidaRequest(BaseModel):
 
 class TurnoRequest(BaseModel):
     accion: str = Field(..., min_length=1, max_length=200)
+
+
+class FeedbackRequest(BaseModel):
+    incoherente: bool
+
+
+class FeedbackResponse(BaseModel):
+    feedback: str | None
 
 
 class TurnoResponse(BaseModel):

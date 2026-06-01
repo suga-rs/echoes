@@ -1,5 +1,6 @@
 """Tests del backoff de transporte de FoundryClient (offline, sin red real)."""
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import httpx
@@ -17,6 +18,7 @@ def _respuesta_chat_ok(content: str = '{"ok": true}') -> MagicMock:
     choice.message.content = content
     choice.finish_reason = "stop"
     resp.choices = [choice]
+    resp.usage = SimpleNamespace(prompt_tokens=10, completion_tokens=20, total_tokens=30)
     return resp
 
 

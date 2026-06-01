@@ -51,6 +51,7 @@ export interface TurnoHistorial {
   narrativa: string;
   opciones: string[];
   imagen_url: string | null;
+  feedback?: string | null;
 }
 
 export interface Partida {

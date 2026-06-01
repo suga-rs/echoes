@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { ImagePlus } from "lucide-react";
+import { Flag, ImagePlus } from "lucide-react";
 import type { TurnoHistorial } from "@/lib/types";
 import { ImagenModal } from "@/components/imagen-modal";
 import { Button } from "@/components/ui/button";
@@ -20,9 +20,20 @@ export function TurnoCard({ turno, esUltimo, imagenCargando = false }: TurnoCard
   const [generando, setGenerando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [limiteAlcanzado, setLimiteAlcanzado] = useState(false);
+  const [marcado, setMarcado] = useState(turno.feedback === "incoherente");
 
   const codigo = usePartidaStore((s) => s.codigoPartida);
   const actualizarImagenTurno = usePartidaStore((s) => s.actualizarImagenTurno);
+
+  const marcarIncoherente = async () => {
+    if (!codigo || marcado) return;
+    setMarcado(true); // optimista
+    try {
+      await api.marcarFeedback(codigo, turno.turno);
+    } catch {
+      setMarcado(false);
+    }
+  };
 
   const generarImagen = async () => {
     if (!codigo || generando) return;
@@ -98,8 +109,20 @@ export function TurnoCard({ turno, esUltimo, imagenCargando = false }: TurnoCard
       )}
 
       <div className="bg-card rounded-lg p-5 border">
-        <div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
-          Turno {turno.turno}
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-xs text-muted-foreground uppercase tracking-wide">
+            Turno {turno.turno}
+          </div>
+          <button
+            type="button"
+            onClick={() => void marcarIncoherente()}
+            disabled={marcado}
+            aria-label="Marcar turno como incoherente"
+            className="text-xs text-muted-foreground hover:text-destructive flex items-center gap-1 disabled:opacity-60"
+          >
+            <Flag className="h-3 w-3" />
+            {marcado ? "Marcado" : "Incoherente"}
+          </button>
         </div>
         <p className="narrativa whitespace-pre-wrap">{turno.narrativa}</p>
       </div>

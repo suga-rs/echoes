@@ -109,6 +109,17 @@ def test_partida_no_encontrada_devuelve_404(client_con_servicio_mockeado):
     assert r.json()["code"] == "partida_no_encontrada"
 
 
+def test_feedback_endpoint(client_con_servicio_mockeado):
+    client, svc = client_con_servicio_mockeado
+    svc.registrar_feedback.return_value = "incoherente"
+
+    r = client.post("/api/partidas/abc/turn/2/feedback", json={"incoherente": True})
+
+    assert r.status_code == 200
+    assert r.json()["feedback"] == "incoherente"
+    svc.registrar_feedback.assert_called_once_with("abc", 2, True)
+
+
 def test_state_endpoint(client_con_servicio_mockeado):
     client, svc = client_con_servicio_mockeado
     svc.get_partida.return_value = Partida(

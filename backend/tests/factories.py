@@ -5,6 +5,20 @@ Cada builder devuelve un dict válido contra su schema, base para mutar en tests
 """
 
 
+def metric_points(reader, name: str) -> list:
+    """Junta todos los data points de una métrica por nombre desde un reader OTel."""
+    data = reader.get_metrics_data()
+    points: list = []
+    if not data:
+        return points
+    for rm in data.resource_metrics:
+        for sm in rm.scope_metrics:
+            for metric in sm.metrics:
+                if metric.name == name:
+                    points.extend(metric.data.data_points)
+    return points
+
+
 def fake_turno_llm_response(
     *,
     necesaria_imagen: bool = False,

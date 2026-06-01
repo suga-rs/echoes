@@ -17,6 +17,7 @@ from openai import (
     RateLimitError,
 )
 
+from app.core import telemetry
 from app.core.config import Settings, get_settings
 from app.core.exceptions import FoundryError
 from app.core.logging import get_logger
@@ -104,6 +105,7 @@ class FoundryClient:
         temperature: float = 0.8,
         max_tokens: int = 1500,
     ) -> dict[str, Any]:
+        t0 = time.perf_counter()
         try:
             response = self._with_retries(
                 lambda: self._client.chat.completions.create(
@@ -121,8 +123,17 @@ class FoundryClient:
                 )
             )
         except Exception as e:
+            telemetry.record_llm_error(operation="chat", tipo=type(e).__name__)
             logger.exception("Foundry chat error")
             raise FoundryError(f"Error llamando al LLM: {e}") from e
+
+        telemetry.record_llm_call(
+            operation="chat",
+            model=self.settings.llm_deployment,
+            latency_ms=(time.perf_counter() - t0) * 1000,
+            usage=getattr(response, "usage", None),
+            finish_reason=response.choices[0].finish_reason,
+        )
 
         content = response.choices[0].message.content
         if not content:
@@ -144,6 +155,7 @@ class FoundryClient:
         temperature: float = 0.8,
         max_tokens: int = 1500,
     ) -> tuple[str, dict[str, Any] | None]:
+        t0 = time.perf_counter()
         try:
             response = self._with_retries(
                 lambda: self._client.chat.completions.create(
@@ -161,8 +173,17 @@ class FoundryClient:
                 )
             )
         except Exception as e:
+            telemetry.record_llm_error(operation="chat", tipo=type(e).__name__)
             logger.exception("Foundry chat error")
             raise FoundryError(f"Error llamando al LLM: {e}") from e
+
+        telemetry.record_llm_call(
+            operation="chat",
+            model=self.settings.llm_deployment,
+            latency_ms=(time.perf_counter() - t0) * 1000,
+            usage=getattr(response, "usage", None),
+            finish_reason=response.choices[0].finish_reason,
+        )
 
         content = response.choices[0].message.content or ""
         try:
@@ -172,6 +193,7 @@ class FoundryClient:
         return content, parsed
 
     def generar_imagen(self, prompt: str, size: str = "1536x1024") -> bytes:
+        t0 = time.perf_counter()
         try:
             response = self._with_retries(
                 lambda: self._client.images.generate(
@@ -185,8 +207,16 @@ class FoundryClient:
                 )
             )
         except Exception as e:
+            telemetry.record_llm_error(operation="image", tipo=type(e).__name__)
             logger.exception("Foundry image error")
             raise FoundryError(f"Error generando imagen: {e}") from e
+
+        telemetry.record_llm_call(
+            operation="image",
+            model=self.settings.image_deployment,
+            latency_ms=(time.perf_counter() - t0) * 1000,
+            usage=getattr(response, "usage", None),
+        )
 
         if not response.data:
             raise FoundryError("Respuesta de imagen vacía")
@@ -213,6 +243,7 @@ class FoundryClient:
         """Streams raw LLM text chunks (JSON tokens) as they arrive."""
         # Nota: el backoff de _with_retries es sync; el inicio del stream no se
         # reintenta. Un error transitorio acá emerge como FoundryError sin reintento.
+        t0 = time.perf_counter()
         try:
             stream = await self._async_client.chat.completions.create(
                 model=self.settings.llm_deployment,
@@ -227,15 +258,31 @@ class FoundryClient:
                 frequency_penalty=0.3,
                 presence_penalty=0.1,
                 stream=True,
+                stream_options={"include_usage": True},
             )
         except Exception as e:
+            telemetry.record_llm_error(operation="chat_stream", tipo=type(e).__name__)
             logger.exception("Foundry streaming error")
             raise FoundryError(f"Error iniciando stream LLM: {e}") from e
 
+        usage = None
+        finish_reason = None
         async with stream:
             async for chunk in stream:
                 if not chunk.choices:
+                    # El chunk final de usage llega con choices vacío.
+                    usage = getattr(chunk, "usage", None) or usage
                     continue
+                if chunk.choices[0].finish_reason:
+                    finish_reason = chunk.choices[0].finish_reason
                 content = chunk.choices[0].delta.content
                 if content:
                     yield content
+
+        telemetry.record_llm_call(
+            operation="chat_stream",
+            model=self.settings.llm_deployment,
+            latency_ms=(time.perf_counter() - t0) * 1000,
+            usage=usage,
+            finish_reason=finish_reason,
+        )

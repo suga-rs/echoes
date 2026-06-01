@@ -25,6 +25,13 @@ os.environ.setdefault("MAX_IMAGENES_POR_PARTIDA", "25")
 os.environ.setdefault("LLM_MAX_RETRIES", "2")
 os.environ.setdefault("LLM_RETRY_BASE_DELAY", "0.01")
 
+from opentelemetry import metrics, trace
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
 from app.models.domain import (
     EstadoPartida,
     Genero,
@@ -33,6 +40,27 @@ from app.models.domain import (
     Personaje,
     WorldState,
 )
+
+# Providers OTel in-memory para testear spans y métricas sin Azure. Se instalan
+# una sola vez al importar conftest (set_*_provider ignora reasignaciones).
+SPAN_EXPORTER = InMemorySpanExporter()
+_tracer_provider = TracerProvider()
+_tracer_provider.add_span_processor(SimpleSpanProcessor(SPAN_EXPORTER))
+trace.set_tracer_provider(_tracer_provider)
+
+METRIC_READER = InMemoryMetricReader()
+metrics.set_meter_provider(MeterProvider(metric_readers=[METRIC_READER]))
+
+
+@pytest.fixture
+def span_exporter() -> InMemorySpanExporter:
+    SPAN_EXPORTER.clear()
+    return SPAN_EXPORTER
+
+
+@pytest.fixture
+def metric_reader() -> InMemoryMetricReader:
+    return METRIC_READER
 
 
 @pytest.fixture

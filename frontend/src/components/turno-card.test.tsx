@@ -1,7 +1,10 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { api } from "@/lib/api";
 import type { TurnoHistorial } from "@/lib/types";
 import { TurnoCard } from "@/components/turno-card";
+import { usePartidaStore } from "@/store/partida-store";
 
 vi.mock("next/image", () => ({
   default: ({ src, alt }: { src: string; alt: string }) => (
@@ -11,9 +14,17 @@ vi.mock("next/image", () => ({
 }));
 
 vi.mock("@/lib/api", () => ({
-  api: { generarImagenTurno: vi.fn() },
+  api: {
+    generarImagenTurno: vi.fn(),
+    marcarFeedback: vi.fn().mockResolvedValue({ feedback: "incoherente" }),
+  },
   ApiClientError: class ApiClientError extends Error {},
 }));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  usePartidaStore.getState().resetear();
+});
 
 const base: TurnoHistorial = {
   turno: 3,
@@ -43,5 +54,15 @@ describe("TurnoCard", () => {
     render(<TurnoCard turno={base} esUltimo={false} />);
 
     expect(screen.getByRole("button", { name: /Generar imagen/ })).toBeInTheDocument();
+  });
+
+  it("marca el turno como incoherente llamando a la API", async () => {
+    const user = userEvent.setup();
+    usePartidaStore.getState().establecerCodigo("abc-123");
+    render(<TurnoCard turno={base} esUltimo={false} />);
+
+    await user.click(screen.getByRole("button", { name: /Marcar turno como incoherente/ }));
+
+    expect(api.marcarFeedback).toHaveBeenCalledWith("abc-123", 3);
   });
 });

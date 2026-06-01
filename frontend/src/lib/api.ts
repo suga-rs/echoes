@@ -161,6 +161,12 @@ export const api = {
       method: "POST",
     }),
 
+  marcarFeedback: (codigo: string, turno: number, incoherente = true) =>
+    request<{ feedback: string | null }>(`/api/partidas/${codigo}/turn/${turno}/feedback`, {
+      method: "POST",
+      body: JSON.stringify({ incoherente }),
+    }),
+
   reanudarPartida: (codigo: string) =>
     request<Partida>(`/api/partidas/${codigo}/resume`),
 

@@ -1,7 +1,7 @@
 """Tests del PartidaService con todas las dependencias mockeadas."""
 
 import pytest
-from factories import fake_creacion_llm_response, fake_turno_llm_response
+from factories import fake_creacion_llm_response, fake_turno_llm_response, metric_points
 
 from app.core.exceptions import (
     FoundryError,
@@ -45,6 +45,75 @@ def test_crear_partida_persiste_prompt_version(foundry_mock, partida_repo_mock, 
 
     guardada = partida_repo_mock.upsert.call_args[0][0]
     assert guardada.metadata.prompt_version == PROMPT_VERSION
+
+
+def test_avanzar_turno_crea_span_con_atributos(
+    foundry_mock, partida_repo_mock, imagen_repo_mock, partida_de_ejemplo, span_exporter
+):
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+    foundry_mock.chat_json_raw.return_value = ("{}", fake_turno_llm_response())
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    svc.avanzar_turno("test-abc-123", "mirar alrededor")
+
+    span = next(s for s in span_exporter.get_finished_spans() if s.name == "avanzar_turno")
+    assert span.attributes["codigo_partida"] == "test-abc-123"
+    assert span.attributes["prompt_version"] == PROMPT_VERSION
+
+
+def test_falla_json_incrementa_counter_de_errores(
+    foundry_mock, partida_repo_mock, imagen_repo_mock, partida_de_ejemplo, metric_reader
+):
+    def total_json_errors() -> float:
+        return sum(
+            p.value
+            for p in metric_points(metric_reader, "llm.errors")
+            if p.attributes.get("tipo") == "json"
+        )
+
+    antes = total_json_errors()
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+    foundry_mock.chat_json_raw.return_value = ("not json", None)
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    with pytest.raises(RespuestaLLMInvalidaError):
+        svc.avanzar_turno("test-abc-123", "mirar")
+
+    assert total_json_errors() > antes
+
+
+def test_registrar_feedback_marca_el_turno(
+    foundry_mock, partida_repo_mock, imagen_repo_mock, partida_de_ejemplo
+):
+    partida_de_ejemplo.historial.append(
+        TurnoHistorial(turno=1, accion_jugador="<inicio>", narrativa="N", opciones=["a", "b", "c"])
+    )
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    resultado = svc.registrar_feedback("test-abc-123", 1, incoherente=True)
+
+    assert resultado == "incoherente"
+    guardada = partida_repo_mock.upsert.call_args[0][0]
+    assert guardada.historial[0].feedback == "incoherente"
+
+
+def test_registrar_feedback_turno_inexistente(
+    foundry_mock, partida_repo_mock, imagen_repo_mock, partida_de_ejemplo
+):
+    partida_repo_mock.get.return_value = partida_de_ejemplo  # historial vacío
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    with pytest.raises(PartidaNoEncontradaError):
+        svc.registrar_feedback("test-abc-123", 99, incoherente=True)
 
 
 def test_crear_partida_falla_si_llm_no_genera_json_valido_dos_veces(
