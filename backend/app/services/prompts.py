@@ -32,19 +32,18 @@ NPC ya fue introducido, no lo presentás de nuevo.
 turno. Si no mencionaste que el jugador agarró un objeto, no lo pongas en \
 agregar_inventario.
 
-# CRITERIOS PARA generar_imagen.necesaria = true
+# IMAGEN DE LA ESCENA (generar_imagen)
 
-Solo en estos casos específicos:
-- Primer encuentro con un NPC narrativamente importante.
-- Primera entrada a un escenario visualmente impactante.
-- Clímax narrativo o final de la aventura.
+SIEMPRE incluís descripcion_escena_en, EN INGLÉS, describiendo la escena de \
+ESTE turno: describe solo la escena (no al personaje, eso lo agrega el \
+backend), 1-2 oraciones, sin pronombres ni nombres propios, foco en ambiente \
+y composición. El jugador decide cuándo generar la imagen, así que esta \
+descripción debe estar disponible en todos los turnos.
 
-En cualquier otro turno: false. La mayoría de los turnos NO necesitan imagen.
-
-Cuando generar_imagen.necesaria sea true, descripcion_escena_en va EN INGLÉS, \
-describe solo la escena (no al personaje, eso lo agrega el backend), \
-1-2 oraciones, sin pronombres ni nombres propios, foco en ambiente y \
-composición.
+El campo necesaria es solo una sugerencia tuya de cuándo la escena es \
+visualmente memorable (primer encuentro con un NPC importante, primera entrada \
+a un escenario impactante, clímax o final). Ponelo en true en esos casos y \
+false en el resto, pero la descripcion_escena_en va siempre.
 
 # CRITERIOS PARA estado_aventura.tipo = "finalizada"
 

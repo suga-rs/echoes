@@ -94,6 +94,6 @@ src/components/ui/           →  Primitive UI (Button, Dialog, Input — Radix 
 | `STORAGE_ACCOUNT_NAME` | Blob storage account name |
 | `STORAGE_CONNECTION_STRING` | Blob connection string |
 | `MAX_TURNOS_POR_PARTIDA` | Default 25 |
-| `MAX_IMAGENES_POR_PARTIDA` | Default 5 |
+| `MAX_IMAGENES_POR_PARTIDA` | Cap on images per game. Default 25. Images are generated on demand (per-turn button) plus the first and last turn automatically. |
 
 Copy `backend/.env.example` → `backend/.env` and `frontend/.env.local.example` → `frontend/.env.local` to configure locally.

@@ -9,6 +9,7 @@ from app.api.dependencies import get_partida_service
 from app.core.exceptions import AppError
 from app.core.logging import get_logger
 from app.models.domain import (
+    ImagenTurnoResponse,
     PartidaResumen,
     RandomDescriptionRequest,
     RandomDescriptionResponse,
@@ -59,6 +60,16 @@ def avanzar_turno(
     service: PartidaService = Depends(get_partida_service),
 ) -> TurnoResponse:
     return service.avanzar_turno(codigo, body.accion)
+
+
+@router.post("/{codigo}/turn/{turno}/image", response_model=ImagenTurnoResponse)
+def generar_imagen_turno(
+    codigo: str,
+    turno: int,
+    service: PartidaService = Depends(get_partida_service),
+) -> ImagenTurnoResponse:
+    imagen_url = service.generar_imagen_turno(codigo, turno)
+    return ImagenTurnoResponse(imagen_url=imagen_url)
 
 
 def _sse(event: str, data: dict) -> str:

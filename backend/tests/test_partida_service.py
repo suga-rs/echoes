@@ -3,11 +3,14 @@
 import pytest
 
 from app.core.exceptions import (
+    FoundryError,
+    LimiteImagenesExcedido,
     LimiteTurnosExcedido,
     PartidaFinalizada,
+    PartidaNoEncontrada,
     RespuestaLLMInvalida,
 )
-from app.models.domain import EstadoPartida, Genero
+from app.models.domain import EstadoPartida, Genero, TurnoHistorial
 from app.services.partida_service import PartidaService
 
 
@@ -38,7 +41,7 @@ def fake_turno_llm_response(
         },
         "generar_imagen": {
             "necesaria": necesaria_imagen,
-            "descripcion_escena_en": "A dark corridor" if necesaria_imagen else "",
+            "descripcion_escena_en": "A dark corridor lit by a flickering candle",
         },
         "estado_aventura": {
             "tipo": estado,
@@ -126,23 +129,45 @@ def test_avanzar_turno_ok_sin_imagen(
     foundry_mock.generar_imagen.assert_not_called()
 
 
-def test_avanzar_turno_con_imagen(
+def test_avanzar_turno_normal_no_genera_imagen(
     foundry_mock,
     partida_repo_mock,
     imagen_repo_mock,
     partida_de_ejemplo,
 ):
-    # turno_actual=4 → nuevo_turno=5; con intervalo=5 y 0 imágenes previas, el pacing lo permite
+    # Los turnos intermedios ya no generan imagen automáticamente: la pide el jugador.
     partida_de_ejemplo.metadata.turno_actual = 4
     partida_repo_mock.get.return_value = partida_de_ejemplo
     foundry_mock.chat_json_raw.return_value = ("{}", fake_turno_llm_response(necesaria_imagen=True))
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    resp = svc.avanzar_turno("test-abc-123", "Avanzar")
+
+    assert resp.imagen_url is None
+    foundry_mock.generar_imagen.assert_not_called()
+
+
+def test_avanzar_turno_final_genera_imagen(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    # El último turno (finalizada) genera imagen automáticamente.
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+    foundry_mock.chat_json_raw.return_value = (
+        "{}",
+        fake_turno_llm_response(estado="finalizada", final="exito"),
+    )
     foundry_mock.generar_imagen.return_value = b"\x89PNG" + b"\x00" * 100
     imagen_repo_mock.subir_imagen.return_value = "https://fake.blob/y.png"
 
     svc = PartidaService(
         foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
     )
-    resp = svc.avanzar_turno("test-abc-123", "Avanzar")
+    resp = svc.avanzar_turno("test-abc-123", "Tomar el corazón")
 
     assert resp.imagen_url == "https://fake.blob/y.png"
     foundry_mock.generar_imagen.assert_called_once()
@@ -155,7 +180,10 @@ def test_falla_imagen_no_rompe_turno(
     partida_de_ejemplo,
 ):
     partida_repo_mock.get.return_value = partida_de_ejemplo
-    foundry_mock.chat_json_raw.return_value = ("{}", fake_turno_llm_response(necesaria_imagen=True))
+    foundry_mock.chat_json_raw.return_value = (
+        "{}",
+        fake_turno_llm_response(estado="finalizada", final="exito"),
+    )
     foundry_mock.generar_imagen.side_effect = Exception("Timeout")
 
     svc = PartidaService(
@@ -194,6 +222,8 @@ def test_avanzar_turno_finaliza_la_partida(
         "{}",
         fake_turno_llm_response(estado="finalizada", final="exito"),
     )
+    foundry_mock.generar_imagen.return_value = b"\x89PNG" + b"\x00" * 100
+    imagen_repo_mock.subir_imagen.return_value = "https://fake.blob/fin.png"
 
     svc = PartidaService(
         foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
@@ -261,3 +291,124 @@ def test_reintento_con_prompt_correctivo(
     resp = svc.avanzar_turno("test-abc-123", "Avanzar")
     assert resp.turno == 2
     assert foundry_mock.chat_json_raw.call_count == 2
+
+
+def _turno_con_escena(turno: int, imagen_url: str | None = None) -> TurnoHistorial:
+    return TurnoHistorial(
+        turno=turno,
+        accion_jugador="Avanzar",
+        narrativa="Narrativa de prueba para el turno.",
+        opciones=["A", "B", "C"],
+        imagen_url=imagen_url,
+        descripcion_escena_en="A dim chamber with carved stone walls",
+    )
+
+
+def test_generar_imagen_turno_ok(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    partida_de_ejemplo.historial = [_turno_con_escena(2)]
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+    foundry_mock.generar_imagen.return_value = b"\x89PNG" + b"\x00" * 100
+    imagen_repo_mock.subir_imagen.return_value = "https://fake.blob/z.png"
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    url = svc.generar_imagen_turno("test-abc-123", 2)
+
+    assert url == "https://fake.blob/z.png"
+    assert partida_de_ejemplo.historial[0].imagen_url == "https://fake.blob/z.png"
+    assert partida_de_ejemplo.metadata.imagenes_generadas == 1
+    partida_repo_mock.upsert.assert_called_once()
+
+
+def test_generar_imagen_turno_idempotente_si_ya_tiene(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    partida_de_ejemplo.historial = [_turno_con_escena(2, imagen_url="https://fake.blob/ya.png")]
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    url = svc.generar_imagen_turno("test-abc-123", 2)
+
+    assert url == "https://fake.blob/ya.png"
+    foundry_mock.generar_imagen.assert_not_called()
+    partida_repo_mock.upsert.assert_not_called()
+
+
+def test_generar_imagen_turno_limite_excedido(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    partida_de_ejemplo.metadata.imagenes_generadas = 25
+    partida_de_ejemplo.historial = [_turno_con_escena(2)]
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    with pytest.raises(LimiteImagenesExcedido):
+        svc.generar_imagen_turno("test-abc-123", 2)
+    foundry_mock.generar_imagen.assert_not_called()
+
+
+def test_generar_imagen_turno_inexistente(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    partida_de_ejemplo.historial = [_turno_con_escena(2)]
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    with pytest.raises(PartidaNoEncontrada):
+        svc.generar_imagen_turno("test-abc-123", 99)
+
+
+def test_generar_imagen_turno_sin_descripcion(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    turno = _turno_con_escena(2)
+    turno.descripcion_escena_en = None
+    partida_de_ejemplo.historial = [turno]
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    with pytest.raises(RespuestaLLMInvalida):
+        svc.generar_imagen_turno("test-abc-123", 2)
+
+
+def test_generar_imagen_turno_falla_foundry(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    partida_de_ejemplo.historial = [_turno_con_escena(2)]
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+    foundry_mock.generar_imagen.side_effect = Exception("Timeout")
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    with pytest.raises(FoundryError):
+        svc.generar_imagen_turno("test-abc-123", 2)

@@ -201,7 +201,7 @@ az containerapp create `
     "APPLICATIONINSIGHTS_CONNECTION_STRING=${APPI_CONN}" `
     "LOG_LEVEL=INFO" `
     "MAX_TURNOS_POR_PARTIDA=25" `
-    "MAX_IMAGENES_POR_PARTIDA=5" `
+    "MAX_IMAGENES_POR_PARTIDA=25" `
     "CORS_ORIGINS=http://localhost:3000"
 
 # Guardar URL del backend

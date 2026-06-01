@@ -56,6 +56,7 @@ class TurnoHistorial(BaseModel):
     narrativa: str
     opciones: list[str]
     imagen_url: str | None = None
+    descripcion_escena_en: str | None = None
 
 
 class MetadataPartida(BaseModel):
@@ -104,6 +105,10 @@ class StartResponse(BaseModel):
     personaje: Personaje
     objetivo: str
     primer_turno: TurnoResponse
+
+
+class ImagenTurnoResponse(BaseModel):
+    imagen_url: str
 
 
 class StateResponse(BaseModel):

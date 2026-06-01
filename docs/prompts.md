@@ -132,14 +132,14 @@ Este es el contrato entre el LLM y el backend. **Si el LLM no respeta este schem
     },
     "generar_imagen": {
       "type": "object",
-      "required": ["necesaria"],
+      "required": ["necesaria", "descripcion_escena_en"],
       "additionalProperties": false,
       "properties": {
         "necesaria": { "type": "boolean" },
         "razon": { "type": "string" },
-        "descripcion_escena": {
+        "descripcion_escena_en": {
           "type": "string",
-          "description": "Descripción visual de la escena en INGLÉS, requerido si necesaria=true."
+          "description": "Descripción visual de la escena en INGLÉS. Siempre requerido: el jugador genera la imagen a demanda, así que debe estar disponible en todos los turnos. necesaria es solo una sugerencia de cuándo la escena es visualmente memorable."
         }
       }
     },
@@ -206,23 +206,23 @@ adaptativa que responde a las decisiones del jugador.
    lo pongas en agregar_inventario. La narrativa y las actualizaciones
    tienen que coincidir.
 
-# CRITERIOS PARA generar_imagen.necesaria = true
+# IMAGEN DE LA ESCENA (generar_imagen)
 
-Solo en estos casos específicos:
-- Primer turno de la aventura (escena de apertura).
-- Primer encuentro con un NPC narrativamente importante.
-- Primera entrada a un escenario visualmente impactante.
-- Clímax narrativo o final de la aventura.
+SIEMPRE incluís descripcion_escena_en. El jugador decide cuándo generar
+la imagen de cada turno (botón a demanda), así que la descripción debe
+estar disponible en todos los turnos. El primer y último turno generan
+imagen automáticamente.
 
-En cualquier otro turno: false. La mayoría de los turnos NO necesitan
-imagen. Es mejor pecar de pocas imágenes que de muchas.
+descripcion_escena_en va EN INGLÉS, describe solo la escena (no al
+personaje, eso lo agrega el backend), 1-2 oraciones, sin pronombres ni
+nombres propios, foco en ambiente y composición. Ejemplo: "An ancient
+stone cathedral interior flooded with murky water, broken stained glass
+windows letting in green-tinted light, eerie silence."
 
-Cuando generar_imagen.necesaria sea true, descripcion_escena va EN
-INGLÉS, describe solo la escena (no al personaje, eso lo agrega el
-backend), 1-2 oraciones, sin pronombres ni nombres propios, foco en
-ambiente y composición. Ejemplo: "An ancient stone cathedral interior
-flooded with murky water, broken stained glass windows letting in
-green-tinted light, eerie silence."
+El campo necesaria es solo una sugerencia tuya de cuándo la escena es
+visualmente memorable (primer encuentro con un NPC importante, primera
+entrada a un escenario impactante, clímax o final). Ponelo en true en
+esos casos y false en el resto, pero la descripcion_escena_en va siempre.
 
 # CRITERIOS PARA estado_aventura.tipo = "finalizada"
 

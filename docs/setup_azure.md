@@ -517,7 +517,7 @@ APPLICATIONINSIGHTS_CONNECTION_STRING=<connection_string>
 # App config
 LOG_LEVEL=INFO
 MAX_TURNOS_POR_PARTIDA=25
-MAX_IMAGENES_POR_PARTIDA=5
+MAX_IMAGENES_POR_PARTIDA=25
 ```
 
 Generá un `.env.example` con las claves pero sin valores, ese sí va a git como referencia para el equipo.

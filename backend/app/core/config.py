@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     # App config
     log_level: str = Field(default="INFO")
     max_turnos_por_partida: int = Field(default=25)
-    max_imagenes_por_partida: int = Field(default=5)
+    max_imagenes_por_partida: int = Field(default=25)
     cors_origins: str = Field(default="http://localhost:3000,http://localhost:5173")
 
     @property

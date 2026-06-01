@@ -26,6 +26,11 @@ class LimiteTurnosExcedido(AppError):
     code = "limite_turnos_excedido"
 
 
+class LimiteImagenesExcedido(AppError):
+    status_code = 409
+    code = "limite_imagenes_excedido"
+
+
 class RespuestaLLMInvalida(AppError):
     status_code = 502
     code = "respuesta_llm_invalida"
