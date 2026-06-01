@@ -73,7 +73,7 @@ TURNO_JSON_SCHEMA: dict[str, Any] = {
         },
         "generar_imagen": {
             "type": "object",
-            "required": ["necesaria"],
+            "required": ["necesaria", "descripcion_escena_en"],
             "additionalProperties": False,
             "properties": {
                 "necesaria": {"type": "boolean"},

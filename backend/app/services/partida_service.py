@@ -11,8 +11,11 @@ from jsonschema import ValidationError, validate
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import (
+    FoundryError,
+    LimiteImagenesExcedido,
     LimiteTurnosExcedido,
     PartidaFinalizada,
+    PartidaNoEncontrada,
     RespuestaLLMInvalida,
 )
 from app.core.logging import get_logger
@@ -114,6 +117,7 @@ class PartidaService:
             narrativa=creacion.primera_escena.narrativa,
             opciones=list(creacion.primera_escena.opciones),
             imagen_url=imagen_url,
+            descripcion_escena_en=creacion.primera_escena.descripcion_imagen_en,
         )
         if imagen_url:
             metadata.imagenes_generadas = 1
@@ -172,20 +176,17 @@ class PartidaService:
         nuevo_turno_num = partida.metadata.turno_actual + 1
         self._aplicar_actualizaciones(partida, turno_llm)
 
+        # La imagen del primer y último turno se genera automáticamente; el resto
+        # las pide el jugador a demanda vía generar_imagen_turno.
         imagen_url = None
         es_final = turno_llm.estado_aventura.tipo == "finalizada"
-        if (
-            turno_llm.generar_imagen.necesaria
-            and turno_llm.generar_imagen.descripcion_escena_en
-            and self._puede_generar_imagen(
-                nuevo_turno_num, partida.metadata.imagenes_generadas, es_final
-            )
-        ):
+        descripcion_escena = turno_llm.generar_imagen.descripcion_escena_en
+        if es_final and descripcion_escena:
             imagen_url = self._generar_imagen_segura(
                 codigo_partida=codigo_partida,
                 turno=nuevo_turno_num,
                 descripcion_visual_personaje_en=partida.personaje.descripcion_visual_en,
-                descripcion_escena_en=turno_llm.generar_imagen.descripcion_escena_en,
+                descripcion_escena_en=descripcion_escena,
                 genero=partida.metadata.genero,
                 imagenes_previas=partida.metadata.imagenes_generadas,
             )
@@ -198,6 +199,7 @@ class PartidaService:
             narrativa=turno_llm.narrativa,
             opciones=list(turno_llm.opciones),
             imagen_url=imagen_url,
+            descripcion_escena_en=descripcion_escena,
         )
         partida.historial.append(nuevo_turno)
         partida.metadata.turno_actual = nuevo_turno_num
@@ -365,21 +367,46 @@ class PartidaService:
             logger.exception("Falló generación de imagen para %s", codigo_partida)
             return None
 
-    def _puede_generar_imagen(
-        self, turno_actual: int, imagenes_generadas: int, es_final: bool
-    ) -> bool:
-        max_img = self.settings.max_imagenes_por_partida
-        max_t = self.settings.max_turnos_por_partida
-        slots_regulares = max_img - 1
-        intervalo = max_t / max_img
+    def generar_imagen_turno(self, codigo_partida: str, turno_num: int) -> str:
+        """Genera a demanda la imagen de un turno ya jugado."""
+        partida = self.partidas.get(codigo_partida)
 
-        if es_final:
-            return imagenes_generadas < max_img
+        if partida.metadata.imagenes_generadas >= self.settings.max_imagenes_por_partida:
+            raise LimiteImagenesExcedido(
+                f"La partida alcanzó el máximo de {self.settings.max_imagenes_por_partida} imágenes"
+            )
 
-        if imagenes_generadas >= slots_regulares:
-            return False
+        turno = next((t for t in partida.historial if t.turno == turno_num), None)
+        if turno is None:
+            raise PartidaNoEncontrada(
+                f"El turno {turno_num} no existe en la partida {codigo_partida}"
+            )
 
-        return turno_actual >= (imagenes_generadas + 1) * intervalo
+        if turno.imagen_url:
+            return turno.imagen_url
+
+        if not turno.descripcion_escena_en:
+            raise RespuestaLLMInvalida(
+                f"El turno {turno_num} no tiene descripción de escena para generar imagen"
+            )
+
+        logger.info("Generando imagen a demanda: codigo=%s, turno=%s", codigo_partida, turno_num)
+
+        imagen_url = self._generar_imagen_segura(
+            codigo_partida=codigo_partida,
+            turno=turno_num,
+            descripcion_visual_personaje_en=partida.personaje.descripcion_visual_en,
+            descripcion_escena_en=turno.descripcion_escena_en,
+            genero=partida.metadata.genero,
+            imagenes_previas=partida.metadata.imagenes_generadas,
+        )
+        if not imagen_url:
+            raise FoundryError("Falló la generación de la imagen")
+
+        partida.metadata.imagenes_generadas += 1
+        turno.imagen_url = imagen_url
+        self.partidas.upsert(partida)
+        return imagen_url
 
     async def avanzar_turno_stream(
         self, codigo_partida: str, accion: str
@@ -447,12 +474,14 @@ class PartidaService:
         self._aplicar_actualizaciones(partida, turno_llm)
 
         # Persist turn (without image URL yet)
+        descripcion_escena = turno_llm.generar_imagen.descripcion_escena_en
         nuevo_turno = TurnoHistorial(
             turno=nuevo_turno_num,
             accion_jugador=accion,
             narrativa=turno_llm.narrativa,
             opciones=list(turno_llm.opciones),
             imagen_url=None,
+            descripcion_escena_en=descripcion_escena,
         )
         partida.historial.append(nuevo_turno)
         partida.metadata.turno_actual = nuevo_turno_num
@@ -468,13 +497,8 @@ class PartidaService:
 
         await asyncio.to_thread(self.partidas.upsert, partida)
 
-        imagen_solicitada = (
-            turno_llm.generar_imagen.necesaria
-            and bool(turno_llm.generar_imagen.descripcion_escena_en)
-            and self._puede_generar_imagen(
-                nuevo_turno_num, partida.metadata.imagenes_generadas, es_final
-            )
-        )
+        # Solo el último turno genera imagen automáticamente; el resto a demanda.
+        imagen_solicitada = es_final and bool(descripcion_escena)
 
         yield _sse(
             "turno",

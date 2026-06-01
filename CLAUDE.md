@@ -33,14 +33,14 @@ ruff format .
 ### Frontend (run from `frontend/`)
 
 ```bash
-npm install                      # first time
-npm run dev                      # http://localhost:3000
-npm run build                    # production build
-npm run lint                     # ESLint
-npm run typecheck                # tsc --noEmit
+pnpm install                     # first time
+pnpm dev                         # http://localhost:3000
+pnpm build                       # production build
+pnpm lint                        # ESLint
+pnpm typecheck                   # tsc --noEmit
 
 # Regenerate API types from live backend (backend must be running on :8000)
-npm run gen:types
+pnpm gen:types
 ```
 
 ## Architecture
@@ -94,6 +94,6 @@ src/components/ui/           →  Primitive UI (Button, Dialog, Input — Radix 
 | `STORAGE_ACCOUNT_NAME` | Blob storage account name |
 | `STORAGE_CONNECTION_STRING` | Blob connection string |
 | `MAX_TURNOS_POR_PARTIDA` | Default 25 |
-| `MAX_IMAGENES_POR_PARTIDA` | Default 5 |
+| `MAX_IMAGENES_POR_PARTIDA` | Cap on images per game. Default 25. Images are generated on demand (per-turn button) plus the first and last turn automatically. |
 
 Copy `backend/.env.example` → `backend/.env` and `frontend/.env.local.example` → `frontend/.env.local` to configure locally.

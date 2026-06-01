@@ -156,6 +156,11 @@ export const api = {
       body: JSON.stringify({ accion }),
     }),
 
+  generarImagenTurno: (codigo: string, turno: number) =>
+    request<{ imagen_url: string }>(`/api/partidas/${codigo}/turn/${turno}/image`, {
+      method: "POST",
+    }),
+
   reanudarPartida: (codigo: string) =>
     request<Partida>(`/api/partidas/${codigo}/resume`),
 

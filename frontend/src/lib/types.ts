@@ -1,6 +1,6 @@
 /**
  * Tipos del dominio. Espejan los DTOs del backend.
- * Cuando el backend cambie, regenerar con `npm run gen:types` y actualizar.
+ * Cuando el backend cambie, regenerar con `pnpm gen:types` y actualizar.
  */
 
 export type Genero = "fantasía" | "ciencia ficción" | "terror";

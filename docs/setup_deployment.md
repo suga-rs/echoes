@@ -201,7 +201,7 @@ az containerapp create `
     "APPLICATIONINSIGHTS_CONNECTION_STRING=${APPI_CONN}" `
     "LOG_LEVEL=INFO" `
     "MAX_TURNOS_POR_PARTIDA=25" `
-    "MAX_IMAGENES_POR_PARTIDA=5" `
+    "MAX_IMAGENES_POR_PARTIDA=25" `
     "CORS_ORIGINS=http://localhost:3000"
 
 # Guardar URL del backend
@@ -294,7 +294,7 @@ Verificar el build localmente antes de continuar:
 
 ```powershell
 cd frontend
-npm run build   # debe generar out/ sin errores
+pnpm build   # debe generar out/ sin errores
 cd ..
 ```
 
@@ -323,7 +323,7 @@ Azure crea automáticamente el workflow `.github/workflows/azure-static-web-apps
 
 ### 5.3 Configurar el secret `BACKEND_URL`
 
-El workflow inyecta `NEXT_PUBLIC_API_URL` durante `npm run build` leyendo el secret `BACKEND_URL`. Crearlo en GitHub:
+El workflow inyecta `NEXT_PUBLIC_API_URL` durante `pnpm build` leyendo el secret `BACKEND_URL`. Crearlo en GitHub:
 
 ```
 GitHub → Settings → Secrets and variables → Actions → New repository secret
@@ -441,8 +441,8 @@ Verificar que `CORS_ORIGINS` en el Container App incluye el dominio exacto del S
 
 ### El frontend no usa la URL correcta del backend
 
-La variable `NEXT_PUBLIC_API_URL` se inyecta desde el secret `BACKEND_URL` durante `npm run build` en el workflow del SWA. Si se configuró después del último deploy, forzar un redeploy desde GitHub Actions.
+La variable `NEXT_PUBLIC_API_URL` se inyecta desde el secret `BACKEND_URL` durante `pnpm build` en el workflow del SWA. Si se configuró después del último deploy, forzar un redeploy desde GitHub Actions.
 
-### `npm run build` falla con `output: 'export'` y error en `next/image`
+### `pnpm build` falla con `output: 'export'` y error en `next/image`
 
 Verificar que `unoptimized: true` está en la configuración de `images` en `next.config.mjs`.

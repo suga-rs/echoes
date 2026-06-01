@@ -2,8 +2,12 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import { ImagePlus } from "lucide-react";
 import type { TurnoHistorial } from "@/lib/types";
 import { ImagenModal } from "@/components/imagen-modal";
+import { Button } from "@/components/ui/button";
+import { api, ApiClientError } from "@/lib/api";
+import { usePartidaStore } from "@/store/partida-store";
 
 interface TurnoCardProps {
   turno: TurnoHistorial;
@@ -13,6 +17,30 @@ interface TurnoCardProps {
 
 export function TurnoCard({ turno, esUltimo, imagenCargando = false }: TurnoCardProps) {
   const [imagenAbierta, setImagenAbierta] = useState(false);
+  const [generando, setGenerando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [limiteAlcanzado, setLimiteAlcanzado] = useState(false);
+
+  const codigo = usePartidaStore((s) => s.codigoPartida);
+  const actualizarImagenTurno = usePartidaStore((s) => s.actualizarImagenTurno);
+
+  const generarImagen = async () => {
+    if (!codigo || generando) return;
+    setError(null);
+    setGenerando(true);
+    try {
+      const { imagen_url } = await api.generarImagenTurno(codigo, turno.turno);
+      actualizarImagenTurno(turno.turno, imagen_url);
+    } catch (err) {
+      if (err instanceof ApiClientError && err.code === "limite_imagenes_excedido") {
+        setLimiteAlcanzado(true);
+      } else {
+        setError(err instanceof Error ? err.message : "No se pudo generar la imagen");
+      }
+    } finally {
+      setGenerando(false);
+    }
+  };
 
   return (
     <article className="animate-fade-in mb-8">
@@ -49,9 +77,25 @@ export function TurnoCard({ turno, esUltimo, imagenCargando = false }: TurnoCard
             alt={`Escena del turno ${turno.turno}`}
           />
         </>
-      ) : imagenCargando ? (
+      ) : imagenCargando || generando ? (
         <div className="w-full aspect-[3/2] mb-4 rounded-lg bg-muted animate-pulse" />
-      ) : null}
+      ) : (
+        <div className="mb-4 flex flex-col items-center gap-2">
+          {limiteAlcanzado ? (
+            <p className="text-xs text-muted-foreground">
+              Alcanzaste el límite de imágenes de esta partida.
+            </p>
+          ) : (
+            <>
+              <Button variant="outline" size="sm" onClick={() => void generarImagen()}>
+                <ImagePlus className="h-4 w-4 mr-2" />
+                Generar imagen
+              </Button>
+              {error && <p className="text-xs text-destructive">{error}</p>}
+            </>
+          )}
+        </div>
+      )}
 
       <div className="bg-card rounded-lg p-5 border">
         <div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
