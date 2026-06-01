@@ -84,7 +84,7 @@ En una nueva terminal, ve a la carpeta `frontend` e instala las dependencias de 
 
 ```bash
 cd frontend
-npm install
+pnpm install
 ```
 
 Configura tus variables de entorno:
@@ -94,12 +94,12 @@ cp .env.local.example .env.local
 
 Genera los tipos del contrato de la API (Asegúrate de que el backend ya esté corriendo en el puerto 8000):
 ```bash
-npm run gen:types
+pnpm gen:types
 ```
 
 Inicia el servidor de desarrollo:
 ```bash
-npm run dev
+pnpm dev
 # El frontend estará disponible en http://localhost:3000
 ```
 

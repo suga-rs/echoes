@@ -33,14 +33,14 @@ ruff format .
 ### Frontend (run from `frontend/`)
 
 ```bash
-npm install                      # first time
-npm run dev                      # http://localhost:3000
-npm run build                    # production build
-npm run lint                     # ESLint
-npm run typecheck                # tsc --noEmit
+pnpm install                     # first time
+pnpm dev                         # http://localhost:3000
+pnpm build                       # production build
+pnpm lint                        # ESLint
+pnpm typecheck                   # tsc --noEmit
 
 # Regenerate API types from live backend (backend must be running on :8000)
-npm run gen:types
+pnpm gen:types
 ```
 
 ## Architecture

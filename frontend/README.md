@@ -5,9 +5,9 @@ Next.js 15 + TypeScript + Tailwind + shadcn/ui. Consume el backend FastAPI.
 ## Quickstart
 
 ```bash
-npm install
+pnpm install
 cp .env.local.example .env.local   # apuntar al backend
-npm run dev
+pnpm dev
 ```
 
 Abrir http://localhost:3000.
@@ -46,7 +46,7 @@ Una sola pantalla tipo chat. El modal de inicio aparece cuando no hay partida ca
 Con el backend corriendo en :8000:
 
 ```bash
-npm run gen:types
+pnpm gen:types
 ```
 
 Esto crea `src/lib/api-types.ts` con todos los schemas del OpenAPI.
