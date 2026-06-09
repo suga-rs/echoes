@@ -107,6 +107,7 @@ class PartidaService:
         metadata = MetadataPartida(
             genero=genero,
             creada_en=datetime.now(UTC),
+            actualizada_en=datetime.now(UTC),
             turno_actual=1,
             estado=EstadoPartida.EN_CURSO,
             prompt_version=PROMPT_VERSION,
@@ -221,6 +222,7 @@ class PartidaService:
         )
         partida.historial.append(nuevo_turno)
         partida.metadata.turno_actual = nuevo_turno_num
+        partida.metadata.actualizada_en = datetime.now(UTC)
 
         if turno_llm.estado_aventura.tipo == "finalizada":
             partida.metadata.estado = EstadoPartida.FINALIZADA
@@ -533,6 +535,7 @@ class PartidaService:
         )
         partida.historial.append(nuevo_turno)
         partida.metadata.turno_actual = nuevo_turno_num
+        partida.metadata.actualizada_en = datetime.now(UTC)
 
         if es_final:
             partida.metadata.estado = EstadoPartida.FINALIZADA

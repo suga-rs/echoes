@@ -90,6 +90,7 @@ export interface PartidaResumen {
   estado: EstadoPartida;
   genero: Genero;
   creada_en: string;
+  actualizada_en?: string | null;
 }
 
 export interface RandomDescriptionResponse {
