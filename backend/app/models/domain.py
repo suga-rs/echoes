@@ -63,6 +63,7 @@ class TurnoHistorial(BaseModel):
 class MetadataPartida(BaseModel):
     genero: Genero
     creada_en: datetime
+    actualizada_en: datetime | None = None
     turno_actual: int = 0
     estado: EstadoPartida = EstadoPartida.EN_CURSO
     final: TipoFinal | None = None
@@ -148,6 +149,7 @@ class PartidaResumen(BaseModel):
     estado: EstadoPartida
     genero: Genero
     creada_en: datetime
+    actualizada_en: datetime | None = None
 
 
 class RandomDescriptionRequest(BaseModel):

@@ -7,11 +7,12 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader } from "@/components/ui/loader";
+import { formatFechaHora } from "@/lib/utils";
 
 const GENERO_EMOJI: Record<string, string> = {
-  "fantasía": "🗡️",
+  fantasía: "🗡️",
   "ciencia ficción": "🚀",
-  "terror": "🕯️",
+  terror: "🕯️",
 };
 
 interface PartidasListProps {
@@ -75,10 +76,14 @@ export function PartidasList({ onReanudar }: PartidasListProps) {
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-base">{GENERO_EMOJI[partida.genero] ?? "📖"}</span>
-                  <span className="font-medium truncate">{partida.nombre_personaje}</span>
+                  <span className="text-base">
+                    {GENERO_EMOJI[partida.genero] ?? "📖"}
+                  </span>
+                  <span className="font-medium truncate">
+                    {partida.nombre_personaje}
+                  </span>
                   <span
-                    className={`ml-auto shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                    className={`shrink-0 items-center justify-center rounded-full px-2 py-0.5 text-center text-xs font-medium ${
                       partida.estado === "en_curso"
                         ? "bg-green-500/15 text-green-700 dark:text-green-400"
                         : "bg-muted text-muted-foreground"
@@ -87,12 +92,25 @@ export function PartidasList({ onReanudar }: PartidasListProps) {
                     {partida.estado === "en_curso" ? "En curso" : "Finalizada"}
                   </span>
                 </div>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <span>
+                    {formatFechaHora(
+                      partida.actualizada_en ?? partida.creada_en,
+                    )}
+                  </span>
+                  <span>•</span>
+                  <span className="font-mono">
+                    {partida.codigo_partida.slice(0, 9)}
+                  </span>
+                  <span>•</span>
                   <span>Turno {partida.turno_actual}</span>
-                  <span className="font-mono">{partida.codigo_partida.slice(0, 9)}</span>
                 </div>
               </div>
-              <Button size="sm" variant="outline" onClick={() => onReanudar(partida.codigo_partida)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onReanudar(partida.codigo_partida)}
+              >
                 Reanudar
               </Button>
             </li>

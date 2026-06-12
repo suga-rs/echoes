@@ -47,7 +47,8 @@ class PartidaRepository:
         query = """
             SELECT c.codigo_partida, c.personaje.nombre AS nombre_personaje,
                    c.metadata.turno_actual, c.metadata.estado,
-                   c.metadata.genero, c.metadata.creada_en
+                   c.metadata.genero, c.metadata.creada_en,
+                   c.metadata.actualizada_en
             FROM c
             ORDER BY c.metadata.creada_en DESC
         """
