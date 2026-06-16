@@ -6,14 +6,13 @@ from factories import fake_creacion_llm_response, fake_turno_llm_response, metri
 from app.core.exceptions import (
     FoundryError,
     LimiteImagenesExcedidoError,
-    LimiteTurnosExcedidoError,
     PartidaFinalizadaError,
     PartidaNoEncontradaError,
     RespuestaLLMInvalidaError,
 )
-from app.models.domain import EstadoPartida, Genero, TurnoHistorial
+from app.models.domain import EstadoPartida, FaseNarrativa, Genero, TipoFinal, TurnoHistorial
 from app.services.partida_service import PartidaService
-from app.services.prompts import PROMPT_VERSION
+from app.services.prompts import PROMPT_VERSION, build_turno_user_prompt
 
 
 def test_crear_partida_ok(foundry_mock, partida_repo_mock, imagen_repo_mock):
@@ -254,20 +253,118 @@ def test_avanzar_turno_finaliza_la_partida(
     assert resp.estado == EstadoPartida.FINALIZADA
 
 
-def test_limite_turnos_excedido(
+def test_turnos_ilimitados(
     foundry_mock,
     partida_repo_mock,
     imagen_repo_mock,
     partida_de_ejemplo,
 ):
-    partida_de_ejemplo.metadata.turno_actual = 25
+    # Antes el turno 25 era el tope; ahora no hay límite y el turno avanza normal.
+    partida_de_ejemplo.metadata.turno_actual = 999
     partida_repo_mock.get.return_value = partida_de_ejemplo
+    foundry_mock.chat_json_raw.return_value = ("{}", fake_turno_llm_response())
 
     svc = PartidaService(
         foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
     )
-    with pytest.raises(LimiteTurnosExcedidoError):
-        svc.avanzar_turno("test-abc-123", "Avanzar")
+    resp = svc.avanzar_turno("test-abc-123", "Avanzar")
+
+    assert resp.turno == 1000
+    assert resp.estado == EstadoPartida.EN_CURSO
+
+
+def test_avanzar_turno_persiste_arco_y_resumen(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+    foundry_mock.chat_json_raw.return_value = (
+        "{}",
+        fake_turno_llm_response(
+            fase_narrativa="climax",
+            tension=9,
+            resumen_historia="Lyra llegó al corazón de la montaña.",
+        ),
+    )
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    svc.avanzar_turno("test-abc-123", "Avanzar")
+
+    guardada = partida_repo_mock.upsert.call_args[0][0]
+    assert guardada.world_state.fase_narrativa == FaseNarrativa.CLIMAX
+    assert guardada.world_state.tension == 9
+    assert guardada.world_state.resumen_historia == "Lyra llegó al corazón de la montaña."
+
+
+def test_user_prompt_incluye_arco_y_resumen_sin_conteo_de_turnos(partida_de_ejemplo):
+    partida_de_ejemplo.world_state.fase_narrativa = FaseNarrativa.DESARROLLO
+    partida_de_ejemplo.world_state.tension = 6
+    partida_de_ejemplo.world_state.resumen_historia = "Resumen previo de prueba."
+
+    prompt = build_turno_user_prompt(partida_de_ejemplo, "mirar alrededor")
+
+    assert "desarrollo" in prompt
+    assert "Tensión actual (0-10): 6" in prompt
+    assert "Resumen previo de prueba." in prompt
+    assert "15-25" not in prompt
+    assert "aventura típica" not in prompt
+
+
+def test_ending_narrativo_finaliza_y_rechaza_proximo_turno(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+    foundry_mock.chat_json_raw.return_value = (
+        "{}",
+        fake_turno_llm_response(estado="finalizada", final="fracaso"),
+    )
+    foundry_mock.generar_imagen.return_value = b"\x89PNG" + b"\x00" * 100
+    imagen_repo_mock.subir_imagen.return_value = "https://fake.blob/fin.png"
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    resp = svc.avanzar_turno("test-abc-123", "Saltar al vacío")
+
+    assert resp.estado == EstadoPartida.FINALIZADA
+    assert resp.final == TipoFinal.FRACASO
+    assert resp.razon_fin == "Test fin"
+
+    guardada = partida_repo_mock.upsert.call_args[0][0]
+    guardada.metadata.estado = EstadoPartida.FINALIZADA
+    partida_repo_mock.get.return_value = guardada
+    with pytest.raises(PartidaFinalizadaError):
+        svc.avanzar_turno("test-abc-123", "Otra acción")
+
+
+def test_partida_legacy_sin_arco_avanza_con_defaults(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    # Simula un documento previo al cambio: deserializa con los defaults del modelo.
+    ws = partida_de_ejemplo.world_state
+    assert ws.fase_narrativa == FaseNarrativa.INTRODUCCION
+    assert ws.tension == 1
+    assert ws.resumen_historia == ""
+
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+    foundry_mock.chat_json_raw.return_value = ("{}", fake_turno_llm_response())
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    resp = svc.avanzar_turno("test-abc-123", "Avanzar")
+
+    assert resp.turno == 2
 
 
 def test_actualizaciones_de_estado_se_aplican(

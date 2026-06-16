@@ -6,7 +6,7 @@ from app.models.domain import Genero, Partida
 # SYSTEM_PROMPT_* o los schemas en llm_schema.py. Se loguea en cada llamada al
 # LLM y se persiste en la metadata de cada partida para poder correlacionar
 # calidad/fallos con la versión activa. Ver changelog en docs/prompts.md.
-PROMPT_VERSION = "1.0.0"
+PROMPT_VERSION = "2.0.0"
 
 SYSTEM_PROMPT_TURNO = """\
 Sos el narrador de una aventura de texto interactiva en español rioplatense. \
@@ -38,6 +38,36 @@ NPC ya fue introducido, no lo presentás de nuevo.
 turno. Si no mencionaste que el jugador agarró un objeto, no lo pongas en \
 agregar_inventario.
 
+6. RESPETÁS las decisiones del jugador. Las consecuencias surgen de lo que \
+hizo, no de un guion predeterminado. Un final terminal (muerte, captura, \
+objetivo perdido) SIEMPRE se telegrafía antes: mostrás el riesgo en el turno \
+previo para que el desenlace se sienta ganado, nunca arbitrario.
+
+# ARCO NARRATIVO (arco) — TU RELOJ DRAMÁTICO
+
+No hay límite de turnos. Tu sentido del tiempo es el arco, no un contador. \
+En cada turno devolvés arco.fase_narrativa y arco.tension (0-10):
+
+- introduccion: presentás situación, personaje y objetivo. Tensión baja (0-3).
+- desarrollo: complicaciones, NPCs, obstáculos. La tensión sube (3-6).
+- climax: confrontación decisiva con el objetivo. Tensión alta (7-10).
+- resolucion: las consecuencias se asientan; acá cerrás la aventura.
+
+Avanzá la fase a medida que la historia progresa y escalá la tensión hacia el \
+clímax. NO te quedes estancado en desarrollo indefinidamente: cada complicación \
+debe acercar al jugador a su objetivo o alejarlo de forma significativa. \
+Recién finalizás (estado_aventura.tipo = "finalizada") cuando estás en climax \
+o resolucion y el objetivo se ganó o se perdió, O cuando el jugador toma una \
+decisión claramente terminal en cualquier momento.
+
+# RESUMEN DE LA HISTORIA (resumen_historia)
+
+Devolvés SIEMPRE resumen_historia: un resumen acumulado en español de todo lo \
+relevante que pasó hasta ahora (lugares, decisiones, promesas, NPCs, giros), \
+reescrito y actualizado este turno. Es tu memoria de largo plazo: tiene que \
+permitir retomar la coherencia sin releer todo el historial. Mantenelo \
+conciso (máx ~200 palabras) integrando lo nuevo sin perder lo importante de antes.
+
 # IMAGEN DE LA ESCENA (generar_imagen)
 
 SIEMPRE incluís descripcion_escena_en, EN INGLÉS, describiendo la escena de \
@@ -54,12 +84,12 @@ false en el resto, pero la descripcion_escena_en va siempre.
 # CRITERIOS PARA estado_aventura.tipo = "finalizada"
 
 - exito: el jugador alcanzó el objetivo declarado.
-- fracaso: el jugador murió, fue capturado, o cerró todas las vías.
+- fracaso: el jugador murió, fue capturado, o cerró todas las vías hacia el \
+objetivo. Una muerte u objetivo perdido SOLO es válido si lo telegrafiaste antes.
 - ambiguo: el jugador abandonó voluntariamente o cierre poético.
 
-La aventura debe cerrarse entre los turnos 15 y 25. Antes del turno 15, evitá \
-finales prematuros excepto que el jugador tome decisiones claramente terminales. \
-Después del turno 25, buscá activamente un cierre.
+El final lo decide la historia, no un número de turno. Cuando finalizás, \
+completás final y razon_fin.
 
 # ESTILO NARRATIVO
 
@@ -100,7 +130,8 @@ TODAS las imágenes de la partida. Especificá: edad, etnia, pelo (color, largo)
 ojos, cuerpo, vestimenta con colores y materiales específicos, accesorios.
 
 2. El world state inicial: dónde empieza el personaje y cuál es su objetivo. \
-El objetivo debe ser concreto y alcanzable en 15-25 turnos.
+El objetivo debe ser concreto, accionable y con un cierre claro posible (algo \
+como "encontrar el corazón de la montaña antes del eclipse", no "salvar al mundo").
 
 3. La primera escena: narrativa de apertura en español rioplatense, tres \
 primeras opciones, y una descripción visual de la escena en inglés.
@@ -147,10 +178,9 @@ el género, ajustala manteniendo el espíritu.
 """
 
 
-def build_turno_user_prompt(partida: Partida, accion_jugador: str, tipos_accion: list[str]) -> str:
+def build_turno_user_prompt(partida: Partida, accion_jugador: str) -> str:
     ws = partida.world_state
     pj = partida.personaje
-    turno = partida.metadata.turno_actual
     genero = partida.metadata.genero.value
 
     turnos_recientes = partida.historial[-4:]
@@ -163,14 +193,18 @@ def build_turno_user_prompt(partida: Partida, accion_jugador: str, tipos_accion:
         historial_txt = "(este es el primer turno después de la apertura)"
 
     inventario = ", ".join(pj.inventario) if pj.inventario else "vacío"
-    eventos = _format_lista(ws.eventos_clave)
     npcs = _format_npcs(ws.npcs)
     pistas = _format_lista(ws.pistas)
+    resumen = ws.resumen_historia.strip() or "(todavía no hay resumen previo)"
 
     return f"""# CONTEXTO DE LA PARTIDA
 
 Género: {genero}
-Turno actual: {turno} (aventura típica: 15-25 turnos)
+
+# ARCO ACTUAL
+
+Fase narrativa: {ws.fase_narrativa.value}
+Tensión actual (0-10): {ws.tension}
 
 # PERSONAJE
 
@@ -183,8 +217,9 @@ Inventario: {inventario}
 Ubicación actual: {ws.ubicacion_actual}
 Objetivo de la aventura: {ws.objetivo}
 
-Eventos clave ocurridos previamente:
-{eventos}
+# RESUMEN DE LA HISTORIA HASTA AHORA (tu memoria de largo plazo)
+
+{resumen}
 
 NPCs encontrados hasta ahora:
 {npcs}
@@ -202,13 +237,11 @@ Pistas descubiertas:
 
 # INSTRUCCIÓN
 
-Las tres opciones de este turno deben seguir estos arquetipos en orden: \
-[{tipos_accion[0]}, {tipos_accion[1]}, {tipos_accion[2]}]. El texto puede ser \
-libre, pero la intención de cada opción debe corresponder a su arquetipo.
-
-Generá el turno {turno + 1} respetando el schema JSON. Mantené coherencia con \
-todo lo anterior. Si la acción del jugador es imposible dada la situación, \
-narrá el intento fallido sin romper la inmersión.
+Generá el próximo turno respetando el schema JSON. Mantené coherencia con todo \
+lo anterior usando el resumen y el estado del mundo. Ofrecé tres opciones \
+meaningfully different que surjan de la situación actual. Actualizá arco \
+(fase_narrativa, tension) y resumen_historia. Si la acción del jugador es \
+imposible dada la situación, narrá el intento fallido sin romper la inmersión.
 """
 
 

@@ -3,7 +3,6 @@
 import asyncio
 import contextlib
 import json
-import random
 import secrets
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
@@ -17,7 +16,6 @@ from app.core.config import Settings, get_settings
 from app.core.exceptions import (
     FoundryError,
     LimiteImagenesExcedidoError,
-    LimiteTurnosExcedidoError,
     PartidaFinalizadaError,
     PartidaNoEncontradaError,
     RespuestaLLMInvalidaError,
@@ -27,6 +25,7 @@ from app.models.domain import (
     NPC,
     Actitud,
     EstadoPartida,
+    FaseNarrativa,
     Genero,
     MetadataPartida,
     Partida,
@@ -60,13 +59,6 @@ from app.services.prompts import (
 logger = get_logger("service.partidas")
 
 _PydanticT = TypeVar("_PydanticT", bound=BaseModel)
-
-_TIPOS_ACCION: dict[str, list[str]] = {
-    "confrontacion": ["confrontar directamente", "engañar", "intimidar"],
-    "social": ["negociar", "ayudar al NPC", "espiar"],
-    "exploracion": ["inspeccionar el entorno", "buscar otra ruta"],
-    "recursos": ["usar un objeto del inventario", "improvisar con lo disponible"],
-}
 
 
 class PartidaService:
@@ -176,11 +168,6 @@ class PartidaService:
                 detalles={"final": partida.metadata.final},
             )
 
-        if partida.metadata.turno_actual >= self.settings.max_turnos_por_partida:
-            raise LimiteTurnosExcedidoError(
-                f"La partida alcanzó el máximo de {self.settings.max_turnos_por_partida} turnos"
-            )
-
         logger.info(
             "Avanzando turno: codigo=%s, turno_actual=%s, prompt_version=%s",
             codigo_partida,
@@ -189,8 +176,7 @@ class PartidaService:
         )
 
         system = SYSTEM_PROMPT_TURNO
-        tipos_accion = self._seleccionar_tipos_accion(partida)
-        user = build_turno_user_prompt(partida, accion, tipos_accion)
+        user = build_turno_user_prompt(partida, accion)
         turno_llm = self._invocar_llm_con_reintento(
             system, user, TURNO_JSON_SCHEMA, TurnoLLMResponse
         )
@@ -383,6 +369,14 @@ class PartidaService:
         if upd.pista_descubierta:
             ws.pistas.append(upd.pista_descubierta)
 
+        # Arco narrativo y memoria rodante: reemplazan al conteo de turnos como
+        # reloj dramático y como contexto de coherencia en partidas largas.
+        with contextlib.suppress(ValueError):
+            ws.fase_narrativa = FaseNarrativa(turno_llm.arco.fase_narrativa)
+        ws.tension = max(0, min(10, turno_llm.arco.tension))
+        if turno_llm.resumen_historia:
+            ws.resumen_historia = turno_llm.resumen_historia
+
     def _generar_imagen_segura(
         self,
         *,
@@ -473,10 +467,6 @@ class PartidaService:
                 f"La partida {codigo_partida} ya terminó",
                 detalles={"final": partida.metadata.final},
             )
-        if partida.metadata.turno_actual >= self.settings.max_turnos_por_partida:
-            raise LimiteTurnosExcedidoError(
-                f"La partida alcanzó el máximo de {self.settings.max_turnos_por_partida} turnos"
-            )
 
         logger.info(
             "Avanzando turno (stream): codigo=%s, turno_actual=%s, prompt_version=%s",
@@ -489,8 +479,7 @@ class PartidaService:
             f"{SYSTEM_PROMPT_TURNO}\n\n# SCHEMA JSON ESPERADO\n"
             f"{json.dumps(TURNO_JSON_SCHEMA, indent=2)}"
         )
-        tipos_accion = self._seleccionar_tipos_accion(partida)
-        user = build_turno_user_prompt(partida, accion, tipos_accion)
+        user = build_turno_user_prompt(partida, accion)
 
         extractor = _NarrativaExtractor()
         accumulated = ""
@@ -589,24 +578,6 @@ class PartidaService:
         alphabet = "abcdefghijkmnpqrstuvwxyz23456789"
         groups = ["".join(secrets.choice(alphabet) for _ in range(4)) for _ in range(3)]
         return "-".join(groups)
-
-    def _seleccionar_tipos_accion(self, partida: Partida) -> list[str]:
-        seed = sum(ord(c) for c in partida.codigo_partida) + partida.metadata.turno_actual * 1000
-        rng = random.Random(seed)
-
-        prioritarias = []
-        if partida.world_state.npcs:
-            prioritarias.append("social")
-        if partida.personaje.inventario:
-            prioritarias.append("recursos")
-
-        restantes = [c for c in _TIPOS_ACCION if c not in prioritarias]
-        rng.shuffle(restantes)
-
-        seleccionadas = (prioritarias + restantes)[:3]
-        rng.shuffle(seleccionadas)
-
-        return [rng.choice(_TIPOS_ACCION[cat]) for cat in seleccionadas]
 
 
 class _NarrativaExtractor:

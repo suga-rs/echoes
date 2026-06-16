@@ -44,7 +44,13 @@ Este es el contrato entre el LLM y el backend. **Si el LLM no respeta este schem
 ```json
 {
   "type": "object",
-  "required": ["narrativa", "opciones", "actualizaciones_estado", "generar_imagen", "estado_aventura"],
+  "required": [
+    "narrativa",
+    "opciones",
+    "actualizaciones_estado",
+    "generar_imagen",
+    "estado_aventura"
+  ],
   "additionalProperties": false,
   "properties": {
     "narrativa": {
@@ -386,7 +392,12 @@ Esta es una llamada especial, distinta a los turnos normales. Se ejecuta una sol
   "properties": {
     "personaje": {
       "type": "object",
-      "required": ["nombre", "descripcion_narrativa", "descripcion_visual_en", "inventario_inicial"],
+      "required": [
+        "nombre",
+        "descripcion_narrativa",
+        "descripcion_visual_en",
+        "inventario_inicial"
+      ],
       "properties": {
         "nombre": { "type": "string" },
         "descripcion_narrativa": { "type": "string", "maxLength": 300 },
@@ -504,7 +515,7 @@ Es una llamada porque incluye la primera escena. Ahorra una llamada al LLM y man
 
 ## Prompt de generación de imagen
 
-Las imágenes se generan con DALL·E 3 (vía Foundry). El prompt se construye en el backend combinando tres piezas: la ficha visual del personaje (fija toda la partida), la descripción de la escena (del LLM, este turno) y el estilo (fijo por género).
+Las imágenes se generan con gpt-image-2 (vía Foundry). El prompt se construye en el backend combinando tres piezas: la ficha visual del personaje (fija toda la partida), la descripción de la escena (del LLM, este turno) y el estilo (fijo por género).
 
 ```python
 ESTILO_POR_GENERO = {
@@ -530,7 +541,7 @@ def build_image_prompt(
     genero: str,
 ) -> str:
     """
-    Construye el prompt final para DALL·E 3.
+    Construye el prompt final para gpt-image-2.
 
     descripcion_visual_personaje: ficha visual fija de la partida, en inglés.
     descripcion_escena: descripcion_escena del turno actual, en inglés.
@@ -549,6 +560,7 @@ def build_image_prompt(
 ### Ejemplo concreto de prompt resultante
 
 Datos:
+
 - Personaje: `"Woman around 40, Mediterranean features, shoulder-length dark brown wavy hair, hazel eyes, athletic build. Wearing a faded olive canvas field jacket with leather elbow patches, khaki cargo pants, scuffed brown leather boots, leather satchel across the chest."`
 - Escena: `"An ancient stone cathedral interior flooded with murky water up to the knees, broken stained glass windows letting in green-tinted light, eerie silence."`
 - Género: `fantasía`
@@ -569,7 +581,7 @@ composition, no text, no watermarks, no logos.
 
 ### Decisiones de diseño del prompt de imagen
 
-**Personaje al principio.** DALL·E 3 pondera más los primeros tokens. La consistencia del protagonista es la prioridad.
+**Personaje al principio.** gpt-image-2 pondera más los primeros tokens. La consistencia del protagonista es la prioridad.
 
 **"no text, no watermarks, no logos" al final.** Cubre artefactos comunes de modelos de imagen que generan texto basura en las paredes, marcas de agua simuladas, etc.
 
@@ -606,7 +618,7 @@ Parámetros que el backend usa al llamar al endpoint de Foundry.
 - `presence_penalty: 0.1`: suave, para empujar diversidad temática sin forzarla.
 - `response_format: json_object`: doble red junto con la instrucción del system prompt.
 
-### Para generación de imágenes (DALL·E 3)
+### Para generación de imágenes (gpt-image-2)
 
 ```python
 {
@@ -632,11 +644,11 @@ Cada llamada al LLM puede fallar por tres razones distintas, y cada una se manej
 
 ### Tipos de fallo
 
-| # | Tipo de fallo | Cómo se detecta | Estrategia |
-|---|---|---|---|
-| 1 | JSON malformado | `json.loads()` falla | Reintentar 1 vez con prompt correctivo. Si falla otra vez, error al usuario. |
-| 2 | JSON válido pero no respeta el schema | jsonschema falla | Reintentar 1 vez incluyendo el error específico. Si falla otra vez, error al usuario. |
-| 3 | JSON válido + schema OK pero contenido inapropiado | Content Safety flags positivos | Reintentar 1 vez con restricción extra de tono. Si falla otra vez, narrativa "neutral" pre-escrita y log para revisión. |
+| #   | Tipo de fallo                                      | Cómo se detecta                | Estrategia                                                                                                              |
+| --- | -------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| 1   | JSON malformado                                    | `json.loads()` falla           | Reintentar 1 vez con prompt correctivo. Si falla otra vez, error al usuario.                                            |
+| 2   | JSON válido pero no respeta el schema              | jsonschema falla               | Reintentar 1 vez incluyendo el error específico. Si falla otra vez, error al usuario.                                   |
+| 3   | JSON válido + schema OK pero contenido inapropiado | Content Safety flags positivos | Reintentar 1 vez con restricción extra de tono. Si falla otra vez, narrativa "neutral" pre-escrita y log para revisión. |
 
 ### Prompt correctivo para reintentos de schema
 
@@ -686,10 +698,11 @@ Esto es la base para detectar patrones (¿siempre falla con descripciones de per
 > llamada al LLM y se persiste en la metadata de cada partida. Bumpear esta constante (y agregar
 > una fila acá) cada vez que cambie un `SYSTEM_PROMPT_*` o un schema en `llm_schema.py`.
 
-| Versión | Fecha | Cambio |
-|---|---|---|
-| 1.0.0 | 2026-06-01 | `PROMPT_VERSION` agregada en código, logueada y persistida en la partida. |
-| 1.0 | 2026-05-11 | Versión inicial. Sin pruebas con sesiones reales. |
+| Versión | Fecha      | Cambio                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2.0.0   | 2026-06-16 | **Arco narrativo + turnos ilimitados.** Se elimina el límite de turnos (`MAX_TURNOS_POR_PARTIDA`) y todo el lenguaje de "15-25 turnos". El reloj dramático pasa a ser el arco (`arco.fase_narrativa` ∈ introduccion/desarrollo/climax/resolucion + `arco.tension` 0-10), ambos en el schema del turno. Se agrega `resumen_historia` (memoria rodante) que reemplaza el volcado de `eventos_clave` en el prompt. Finales (muerte/objetivo perdido/éxito) gatillan por desenlace narrativo con foreshadowing, no por conteo de turnos. Se eliminan los arquetipos de acción forzados por turno: las opciones surgen de la situación. |
+| 1.0.0   | 2026-06-01 | `PROMPT_VERSION` agregada en código, logueada y persistida en la partida.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| 1.0     | 2026-05-11 | Versión inicial. Sin pruebas con sesiones reales.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 ---
 
@@ -698,7 +711,7 @@ Esto es la base para detectar patrones (¿siempre falla con descripciones de per
 Cosas que conviene resolver con pruebas empíricas y no por especulación:
 
 - **¿gpt-4o-mini alcanza para mantener coherencia narrativa a 20+ turnos?** Si no, escalar a gpt-4o (~10x más caro pero mucho mejor en coherencia largo plazo). Decisión empírica después del sprint 2.
-- **¿La descripción visual del personaje sobrevive a DALL·E 3 con consistencia aceptable?** DALL·E 3 reinterpreta los prompts; aunque la descripción esté fija, las imágenes pueden variar más de lo deseado. Si es un problema, evaluar migración a GPT-image-1.5 (mejor coherencia entre escenas).
+- **¿La descripción visual del personaje sobrevive a gpt-image-2 con consistencia aceptable?** gpt-image-2 reinterpreta los prompts; aunque la descripción esté fija, las imágenes pueden variar más de lo deseado. Si es un problema, evaluar migración a GPT-image-1.5 (mejor coherencia entre escenas).
 - **¿El bound de 15-25 turnos se respeta?** Posibilidad de que el modelo cierre muy temprano. Si pasa, agregar regla en system prompt: "Antes del turno 12, NUNCA marques finalizada salvo muerte explícita".
 - **¿Las tres opciones se vuelven repetitivas después del turno 10?** Si pasa, agregar frequency_penalty más alto o instrucción explícita: "Las opciones de este turno deben usar verbos distintos a los de los últimos 3 turnos".
 - **¿Conviene cachear el system prompt?** Los modelos de Foundry soportan prompt caching que abarata el system prompt al 25% del costo si se reutiliza. Como el system prompt es idéntico en todos los turnos de la sesión, vale la pena activarlo. Verificar disponibilidad y precio actual.

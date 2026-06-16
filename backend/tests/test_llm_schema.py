@@ -120,6 +120,15 @@ TURNO_INVALIDOS = [
         id="necesaria-no-bool",
     ),
     pytest.param(_con(fake_turno_llm_response(), ["foo"], "bar"), id="clave-extra-raiz"),
+    pytest.param(_sin(fake_turno_llm_response(), ["arco"]), id="falta-arco"),
+    pytest.param(_sin(fake_turno_llm_response(), ["resumen_historia"]), id="falta-resumen"),
+    pytest.param(
+        _con(fake_turno_llm_response(), ["arco", "fase_narrativa"], "epilogo"),
+        id="fase-invalida",
+    ),
+    pytest.param(
+        _con(fake_turno_llm_response(), ["arco", "tension"], 11), id="tension-fuera-de-rango"
+    ),
 ]
 
 

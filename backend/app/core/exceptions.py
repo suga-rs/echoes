@@ -21,11 +21,6 @@ class PartidaFinalizadaError(AppError):
     code = "partida_finalizada"
 
 
-class LimiteTurnosExcedidoError(AppError):
-    status_code = 409
-    code = "limite_turnos_excedido"
-
-
 class LimiteImagenesExcedidoError(AppError):
     status_code = 409
     code = "limite_imagenes_excedido"

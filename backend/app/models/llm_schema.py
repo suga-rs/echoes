@@ -12,6 +12,8 @@ TURNO_JSON_SCHEMA: dict[str, Any] = {
         "actualizaciones_estado",
         "generar_imagen",
         "estado_aventura",
+        "arco",
+        "resumen_historia",
     ],
     "additionalProperties": False,
     "properties": {
@@ -91,6 +93,16 @@ TURNO_JSON_SCHEMA: dict[str, Any] = {
                 "razon_fin": {"type": ["string", "null"]},
             },
         },
+        "arco": {
+            "type": "object",
+            "required": ["fase_narrativa", "tension"],
+            "additionalProperties": False,
+            "properties": {
+                "fase_narrativa": {"enum": ["introduccion", "desarrollo", "climax", "resolucion"]},
+                "tension": {"type": "integer", "minimum": 0, "maximum": 10},
+            },
+        },
+        "resumen_historia": {"type": "string", "maxLength": 1500},
     },
 }
 
@@ -181,12 +193,19 @@ class EstadoAventuraLLM(BaseModel):
     razon_fin: str | None = None
 
 
+class ArcoLLM(BaseModel):
+    fase_narrativa: str
+    tension: int
+
+
 class TurnoLLMResponse(BaseModel):
     narrativa: str
     opciones: list[str]
     actualizaciones_estado: ActualizacionesEstado
     generar_imagen: GenerarImagen
     estado_aventura: EstadoAventuraLLM
+    arco: ArcoLLM
+    resumen_historia: str
 
 
 class PersonajeLLM(BaseModel):

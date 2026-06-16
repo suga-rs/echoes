@@ -29,6 +29,13 @@ class TipoFinal(StrEnum):
     AMBIGUO = "ambiguo"
 
 
+class FaseNarrativa(StrEnum):
+    INTRODUCCION = "introduccion"
+    DESARROLLO = "desarrollo"
+    CLIMAX = "climax"
+    RESOLUCION = "resolucion"
+
+
 class Personaje(BaseModel):
     nombre: str
     descripcion_narrativa: str
@@ -48,6 +55,14 @@ class WorldState(BaseModel):
     eventos_clave: list[str] = Field(default_factory=list)
     npcs: list[NPC] = Field(default_factory=list)
     pistas: list[str] = Field(default_factory=list)
+    # Arco narrativo: reemplaza al conteo de turnos como reloj dramático.
+    # Partidas previas a este cambio (Cosmos schemaless) deserializan con
+    # estos defaults seguros.
+    fase_narrativa: FaseNarrativa = FaseNarrativa.INTRODUCCION
+    tension: int = 1
+    # Resumen acumulado de la historia que el narrador reescribe cada turno;
+    # mantiene la coherencia en partidas largas sin reinyectar todo el historial.
+    resumen_historia: str = ""
 
 
 class TurnoHistorial(BaseModel):

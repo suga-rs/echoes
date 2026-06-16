@@ -24,6 +24,9 @@ def fake_turno_llm_response(
     necesaria_imagen: bool = False,
     estado: str = "en_curso",
     final: str | None = None,
+    fase_narrativa: str = "desarrollo",
+    tension: int = 4,
+    resumen_historia: str = "El personaje exploró la cripta y avanzó por el pasillo.",
 ) -> dict:
     return {
         "narrativa": (
@@ -53,6 +56,11 @@ def fake_turno_llm_response(
             "final": final,
             "razon_fin": "Test fin" if final else None,
         },
+        "arco": {
+            "fase_narrativa": fase_narrativa,
+            "tension": tension,
+        },
+        "resumen_historia": resumen_historia,
     }
 
 
