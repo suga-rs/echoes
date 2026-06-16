@@ -28,11 +28,18 @@ class Settings(BaseSettings):
     cosmos_key: str = Field(default="")
     cosmos_database: str = Field(default="aventuras")
     cosmos_container: str = Field(default="partidas")
+    cosmos_usuarios_container: str = Field(default="usuarios")
 
     # Blob Storage
     storage_account_name: str = Field(...)
     storage_container: str = Field(default="imagenes-aventuras")
+    storage_avatares_container: str = Field(default="avatares")
     storage_connection_string: str = Field(default="")
+
+    # Auth / JWT
+    jwt_secret: str = Field(default="dev-insecure-secret-change-me")
+    jwt_algorithm: str = Field(default="HS256")
+    jwt_expire_minutes: int = Field(default=10080)  # 7 días
 
     # Observability
     applicationinsights_connection_string: str = Field(default="")

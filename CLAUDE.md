@@ -91,8 +91,13 @@ src/components/ui/           →  Primitive UI (Button, Dialog, Input — Radix 
 | `IMAGE_DEPLOYMENT` | Image model deployment (e.g. `gpt-image-2`) |
 | `COSMOS_ENDPOINT` | Cosmos DB account URI |
 | `COSMOS_KEY` | Cosmos DB key (empty = Entra ID) |
+| `COSMOS_USUARIOS_CONTAINER` | Users container name. Default `usuarios` (partition key `/id`, unique key on `/username_lower`). |
 | `STORAGE_ACCOUNT_NAME` | Blob storage account name |
 | `STORAGE_CONNECTION_STRING` | Blob connection string |
+| `STORAGE_AVATARES_CONTAINER` | Blob container for profile avatars. Default `avatares`. |
+| `JWT_SECRET` | Secret used to sign login JWTs. **Must** be a long random value in production. |
+| `JWT_ALGORITHM` | JWT signing algorithm. Default `HS256`. |
+| `JWT_EXPIRE_MINUTES` | Access-token lifetime in minutes. Default 10080 (7 days). |
 | `MAX_TURNOS_POR_PARTIDA` | Default 25 |
 | `MAX_IMAGENES_POR_PARTIDA` | Cap on images per game. Default 25. Images are generated on demand (per-turn button) plus the first and last turn automatically. |
 

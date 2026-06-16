@@ -7,9 +7,12 @@
 
 import type {
   ApiError,
+  AuthResponse,
+  AvatarResponse,
   EstadoPartida,
   Partida,
   PartidaResumen,
+  PerfilResponse,
   RandomDescriptionResponse,
   StartResponse,
   StateResponse,
@@ -17,8 +20,14 @@ import type {
   TurnoResponse,
   Genero,
 } from "./types";
+import { getAuthToken } from "@/store/auth-store";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+function authHeaders(): Record<string, string> {
+  const token = getAuthToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 export class ApiClientError extends Error {
   constructor(
@@ -37,6 +46,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...authHeaders(),
       ...(init?.headers || {}),
     },
   });
@@ -181,4 +191,44 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ genero }),
     }),
+
+  register: (username: string, password: string) =>
+    request<AuthResponse>("/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
+
+  login: (username: string, password: string) =>
+    request<AuthResponse>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
+
+  getPerfil: () => request<PerfilResponse>("/api/usuarios/me"),
+
+  uploadAvatar: async (file: File): Promise<AvatarResponse> => {
+    const form = new FormData();
+    form.append("file", file);
+    // No fijamos Content-Type: el navegador agrega el boundary del multipart.
+    const res = await fetch(`${BASE_URL}/api/usuarios/me/avatar`, {
+      method: "POST",
+      headers: { ...authHeaders() },
+      body: form,
+    });
+    if (!res.ok) {
+      let detail: ApiError | null = null;
+      try {
+        detail = await res.json();
+      } catch {
+        // ignore
+      }
+      throw new ApiClientError(
+        res.status,
+        detail?.code || "http_error",
+        detail?.mensaje || `HTTP ${res.status}`,
+        detail?.detalles || {},
+      );
+    }
+    return res.json() as Promise<AvatarResponse>;
+  },
 };

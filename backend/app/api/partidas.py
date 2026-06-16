@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 from fastapi.responses import StreamingResponse
 
-from app.api.dependencies import get_partida_service
+from app.api.dependencies import get_optional_user, get_partida_service
 from app.core.exceptions import AppError
 from app.core.logging import get_logger
 from app.models.domain import (
@@ -32,8 +32,10 @@ router = APIRouter(prefix="/api/partidas", tags=["partidas"])
 @router.get("", response_model=list[PartidaResumen])
 def listar_partidas(
     service: Annotated[PartidaService, Depends(get_partida_service)],
+    user_id: Annotated[str | None, Depends(get_optional_user)],
 ) -> list[PartidaResumen]:
-    return service.listar_partidas()
+    # Anónimo → bucket Creator ("0"); autenticado → solo sus partidas.
+    return service.listar_partidas(user_id=user_id or "0")
 
 
 @router.post("/random-description", response_model=RandomDescriptionResponse)
@@ -49,10 +51,12 @@ def random_description(
 def start_partida(
     body: StartPartidaRequest,
     service: Annotated[PartidaService, Depends(get_partida_service)],
+    user_id: Annotated[str | None, Depends(get_optional_user)],
 ) -> StartResponse:
     return service.crear_partida(
         genero=body.genero,
         descripcion_personaje=body.descripcion_personaje,
+        owner_id=user_id or "0",
     )
 
 

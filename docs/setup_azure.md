@@ -69,6 +69,7 @@ Antes de crear nada, fijá los siguientes valores y mantenelos consistentes dura
 **Recomendación: `eastus2`**
 
 Razones:
+
 - `gpt-4.1-mini` está disponible en deployment Global Standard en eastus2.
 - `gpt-image-2` está disponible en eastus2 al momento de redacción.
 - Es una de las regiones con mejor disponibilidad de cuota para suscripciones Azure for Students.
@@ -82,16 +83,16 @@ Alternativas viables si eastus2 no tiene cuota disponible: `eastus`, `westus3`, 
 
 Adoptá una convención y respetala. Acá uso `ata` (aventuras de texto con IA) como prefijo de proyecto.
 
-| Recurso | Nombre sugerido |
-|---|---|
-| Resource Group | `rg-ata-dev` |
-| Foundry Account | `foundry-ata` |
-| Foundry Project | `proj-ata` |
-| Deployment LLM | `gpt-41-mini-ata` |
-| Deployment imagen | `gpt-image-2-ata` |
-| Cosmos DB Account | `cosmos-ata-<sufijo>` (debe ser único globalmente; usá tus iniciales o un número) |
+| Recurso              | Nombre sugerido                                                                    |
+| -------------------- | ---------------------------------------------------------------------------------- |
+| Resource Group       | `rg-ata-dev`                                                                       |
+| Foundry Account      | `foundry-ata`                                                                      |
+| Foundry Project      | `proj-ata`                                                                         |
+| Deployment LLM       | `gpt-41-mini-ata`                                                                  |
+| Deployment imagen    | `gpt-image-2-ata`                                                                  |
+| Cosmos DB Account    | `cosmos-ata-<sufijo>` (debe ser único globalmente; usá tus iniciales o un número)  |
 | Blob Storage Account | `stataimgs<sufijo>` (sin guiones, sin mayúsculas, único globalmente, máx 24 chars) |
-| App Insights | `appi-ata` |
+| App Insights         | `appi-ata`                                                                         |
 
 ### Variables para los comandos
 
@@ -178,6 +179,7 @@ az cognitiveservices account create \
 ```
 
 Notas:
+
 - `--kind AIServices` es lo que indica que es un recurso Foundry (vs Cognitive Services clásico).
 - `--custom-domain` es **obligatorio** para autenticación con Entra ID. Sin esto, solo podés usar API keys.
 - `S0` es el único SKU disponible para Foundry.
@@ -241,6 +243,7 @@ az cognitiveservices account deployment create \
 ```
 
 Parámetros importantes:
+
 - `--sku-name GlobalStandard`: routing global, mejor disponibilidad de capacidad y menor latencia promedio.
 - `--sku-capacity 50`: 50 mil tokens por minuto. Para un TP es más que suficiente. Si Azure for Students no permite 50, bajá a 10. El comando va a fallar con mensaje claro indicando el máximo disponible.
 - `--model-version`: verificá la versión actual disponible en tu región con `az cognitiveservices account list-models --name $FOUNDRY_NAME --resource-group $RG -o table` antes de ejecutar, y reemplazá si hay una más nueva.
@@ -296,6 +299,7 @@ az cognitiveservices account deployment create \
 ```
 
 Diferencias clave con DALL·E 3:
+
 - `gpt-image-2` factura por tokens de entrada (texto del prompt), no por imagen. Como nuestros prompts son ~200 tokens, el costo por imagen baja sustancialmente respecto a DALL·E 3.
 - Soporta resoluciones flexibles. Para apaisado cinematográfico vamos a pedir 1536×1024 al invocarlo (no se configura acá).
 - La capacidad de imagen se mide diferente; `--sku-capacity 1` alcanza para el ritmo de uso del proyecto.
@@ -358,6 +362,7 @@ az cosmosdb sql container create \
 ```
 
 Notas:
+
 - `--partition-key-path "/codigo_partida"`: la clave de partición es el código de partida, que es justamente la clave por la que el backend consulta. Esto da lecturas y escrituras de costo mínimo (1 RU).
 - Modo serverless no acepta throughput dedicado; paga solo por las RUs consumidas.
 
@@ -400,6 +405,12 @@ Crear el container con acceso público de lectura (las imágenes no son sensible
 ```bash
 az storage container create \
   --name imagenes-aventuras \
+  --account-name $STORAGE_NAME \
+  --public-access blob \
+  --auth-mode login
+
+az storage container create \
+  --name avatares \
   --account-name $STORAGE_NAME \
   --public-access blob \
   --auth-mode login
@@ -626,6 +637,7 @@ Los cuatro tests deben pasar. Si alguno falla, ir a la sección de solución de 
 **Causa:** las suscripciones Azure for Students tienen cuotas reducidas por defecto.
 
 **Solución:**
+
 1. Portal de Foundry → **Operate → Quota** → activá **Show all**.
 2. Encontrá el modelo, click en **Request quota**.
 3. Indicá uso académico, justificación breve.
@@ -636,6 +648,7 @@ Los cuatro tests deben pasar. Si alguno falla, ir a la sección de solución de 
 **Causa:** el nombre del modelo o la versión cambió desde la fecha de redacción.
 
 **Solución:**
+
 ```bash
 az cognitiveservices account list-models \
   --name $FOUNDRY_NAME \
@@ -667,12 +680,12 @@ Buscá la versión vigente y reemplazá `--model-version` en el comando.
 
 Para tener una referencia al pedir aumentos:
 
-| Recurso | Cuota mínima recomendada | Cuota cómoda para demo |
-|---|---|---|
-| gpt-4.1-mini | 10K TPM | 50K TPM |
-| gpt-image-2 | 1 unidad de capacidad | 1 unidad |
-| Cosmos DB | (serverless, no aplica) | (serverless, no aplica) |
-| Blob Storage | 5000 IOPS (default) | sin cambio |
+| Recurso      | Cuota mínima recomendada | Cuota cómoda para demo  |
+| ------------ | ------------------------ | ----------------------- |
+| gpt-4.1-mini | 10K TPM                  | 50K TPM                 |
+| gpt-image-2  | 1 unidad de capacidad    | 1 unidad                |
+| Cosmos DB    | (serverless, no aplica)  | (serverless, no aplica) |
+| Blob Storage | 5000 IOPS (default)      | sin cambio              |
 
 Para el ritmo de uso del TP (estimado 30-50 sesiones de prueba durante todo el desarrollo, más unas 10 sesiones en vivo durante la demo), 10K TPM en el LLM es holgado. El cuello de botella va a ser la velocidad de respuesta del modelo de imagen, no la cuota.
 
