@@ -154,10 +154,20 @@ export async function avanzarTurnoStream(
 }
 
 export const api = {
-  iniciarPartida: (genero: Genero, descripcion_personaje: string) =>
+  iniciarPartida: (
+    genero: Genero,
+    descripcion_personaje: string,
+    premisa?: string | null,
+    tono?: string | null,
+  ) =>
     request<StartResponse>("/api/partidas/start", {
       method: "POST",
-      body: JSON.stringify({ genero, descripcion_personaje }),
+      body: JSON.stringify({
+        genero,
+        descripcion_personaje,
+        premisa: premisa || null,
+        tono: tono || null,
+      }),
     }),
 
   avanzarTurno: (codigo: string, accion: string) =>

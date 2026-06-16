@@ -1,12 +1,15 @@
 """Prompts del LLM. La fuente de verdad documental es docs/prompts.md."""
 
+import random
+from dataclasses import dataclass
+
 from app.models.domain import Genero, Partida
 
 # Versión de los prompts + contrato JSON. Bumpear al cambiar cualquier
 # SYSTEM_PROMPT_* o los schemas en llm_schema.py. Se loguea en cada llamada al
 # LLM y se persiste en la metadata de cada partida para poder correlacionar
 # calidad/fallos con la versión activa. Ver changelog en docs/prompts.md.
-PROMPT_VERSION = "2.0.0"
+PROMPT_VERSION = "2.1.0"
 
 SYSTEM_PROMPT_TURNO = """\
 Sos el narrador de una aventura de texto interactiva en español rioplatense. \
@@ -160,12 +163,207 @@ ESTILO_POR_GENERO: dict[Genero, str] = {
 }
 
 
-def build_creacion_user_prompt(genero: Genero, descripcion_personaje: str) -> str:
+@dataclass(frozen=True)
+class SemillaCreativa:
+    """Chispa creativa muestreada por partida para romper la repetición entre
+    juegos. Se inyecta como inspiración (no como guion) en el prompt de creación."""
+
+    nombre: str
+    premisa: str
+    tono: str
+    apertura: str
+
+
+# Pools curados por género. El modelo colapsa al mismo atractor (mismos nombres,
+# premisas y tono) cuando la entrada no varía entre partidas; muestrear una chispa
+# distinta por juego es lo único que lo mueve de ese atractor. Cuatro dimensiones
+# independientes multiplican el espacio efectivo muy por encima del atractor único.
+CREATION_POOLS: dict[Genero, dict[str, list[str]]] = {
+    Genero.FANTASIA: {
+        "nombres": [
+            "Bruna",
+            "Tobías",
+            "Yael",
+            "Caoimhe",
+            "Ferran",
+            "Ondina",
+            "Mateo",
+            "Senna",
+            "Galen",
+            "Inés",
+            "Rurik",
+            "Wren",
+        ],
+        "premisas": [
+            "una deuda de sangre con un dios menor que cobra lo prometido",
+            "un mapa que solo aparece bajo la luna nueva",
+            "una hermana convertida en estatua viviente",
+            "un juramento roto que envenena la cosecha del valle",
+            "una reliquia robada que sangra cuando miente quien la sostiene",
+            "un pueblo que olvida un nombre más cada amanecer",
+            "una corona que elige a quien la odia",
+            "un puente que solo cruza quien confiesa una culpa",
+        ],
+        "tonos": [
+            "melancólico y crepuscular",
+            "aventura pícara y luminosa",
+            "épico sombrío",
+            "folclórico e inquietante",
+            "íntimo y agridulce",
+            "mítico y solemne",
+        ],
+        "aperturas": [
+            "en medio de una huida que ya empezó",
+            "el día después de una catástrofe",
+            "ante una puerta que no debería estar abierta",
+            "en un mercado donde acaban de reconocerlo",
+            "despertando en un lugar que cambió mientras dormía",
+            "en el último día de una tregua frágil",
+        ],
+    },
+    Genero.CIENCIA_FICCION: {
+        "nombres": [
+            "Nadia",
+            "Corvo",
+            "Yuki",
+            "Themba",
+            "Iria",
+            "Dax",
+            "Petra",
+            "Onir",
+            "Saoirse",
+            "Kestrel",
+            "Amara",
+            "Vidal",
+        ],
+        "premisas": [
+            "una señal que repite tu propia voz desde un sistema vacío",
+            "un implante de memoria que recuerda cosas que no viviste",
+            "una colonia que vota cada noche a quién dejar afuera del domo",
+            "una IA de a bordo que empezó a mentir por compasión",
+            "un salto mal calculado que te dejó un día antes de tu propia partida",
+            "una nave de rescate cuya tripulación nunca pidió auxilio",
+            "un contrato minero sobre un asteroide que respira",
+            "una vacuna que cura el miedo y borra algo más",
+        ],
+        "tonos": [
+            "noir frío y paranoico",
+            "aventura optimista de frontera",
+            "claustrofóbico y tenso",
+            "contemplativo y melancólico",
+            "satírico y burocrático",
+            "épico y vertiginoso",
+        ],
+        "aperturas": [
+            "con una alarma sonando y nadie más despierto",
+            "minutos antes de un acople que no figura en la agenda",
+            "tras perder contacto con tierra",
+            "en una estación a la que llegaste por error",
+            "leyendo un mensaje dirigido a alguien con tu nombre",
+            "durante el último turno antes del relevo",
+        ],
+    },
+    Genero.TERROR: {
+        "nombres": [
+            "Ruth",
+            "Caleb",
+            "Noa",
+            "Edith",
+            "Tomás",
+            "Lior",
+            "Magda",
+            "Ivo",
+            "Hester",
+            "Bram",
+            "Selma",
+            "Cosme",
+        ],
+        "premisas": [
+            "una casa que solo tiene habitaciones de más cuando estás solo",
+            "un duelo que nadie del pueblo recuerda haber empezado",
+            "una grabación que sigue después de que apagaste todo",
+            "una deuda con alguien que prometiste no volver a nombrar",
+            "un faro cuyo guardián anterior nunca bajó",
+            "una procesión anual a la que este año te tocó a vos",
+            "un sótano que devuelve mal lo que bajás a guardar",
+            "una invitación firmada con tu letra que no escribiste",
+        ],
+        "tonos": [
+            "opresivo y húmedo",
+            "frío y clínico",
+            "melancólico y fúnebre",
+            "tenso de paranoia callada",
+            "onírico y desorientador",
+            "íntimo y sofocante",
+        ],
+        "aperturas": [
+            "cuando ya es demasiado tarde para volver",
+            "tras un ruido que no debería repetirse y se repite",
+            "en una espera que se alarga más de lo normal",
+            "al encontrar la puerta que dejaste cerrada, abierta",
+            "después de que todos los demás se fueron",
+            "en el silencio justo antes de que algo conteste",
+        ],
+    },
+}
+
+
+def sample_seed(genero: Genero, rng: random.Random | None = None) -> SemillaCreativa:
+    """Muestrea una chispa creativa para una partida nueva. `rng` es inyectable
+    para tests deterministas; en producción se usa una fuente fresca."""
+    rng = rng or random.Random()
+    pools = CREATION_POOLS[genero]
+    return SemillaCreativa(
+        nombre=rng.choice(pools["nombres"]),
+        premisa=rng.choice(pools["premisas"]),
+        tono=rng.choice(pools["tonos"]),
+        apertura=rng.choice(pools["aperturas"]),
+    )
+
+
+def build_creacion_user_prompt(
+    genero: Genero,
+    descripcion_personaje: str,
+    seed: SemillaCreativa,
+    premisa: str | None = None,
+    tono: str | None = None,
+) -> str:
+    # Cada campo cae en uno de dos baldes según su FUENTE: lo que pidió el
+    # jugador se honra; lo que aporta la seed es inspiración para reinterpretar.
+    premisa_jugador = premisa.strip() if premisa and premisa.strip() else None
+    tono_jugador = tono.strip() if tono and tono.strip() else None
+
+    honrar: list[tuple[str, str]] = []
+    inspirar: list[tuple[str, str]] = []
+
+    (honrar if premisa_jugador else inspirar).append(("Premisa", premisa_jugador or seed.premisa))
+    (honrar if tono_jugador else inspirar).append(("Tono", tono_jugador or seed.tono))
+    inspirar.append(("Cómo arranca la escena", seed.apertura))
+    inspirar.append(("Nombre sugerido (respaldo)", seed.nombre))
+
+    secciones = ""
+    if honrar:
+        items = "\n".join(f"- {k}: {v}" for k, v in honrar)
+        secciones += "\n# LO QUE PIDIÓ EL JUGADOR (honralo fielmente)\n\n" + items + "\n"
+    items_seed = "\n".join(f"- {k}: {v}" for k, v in inspirar)
+    secciones += (
+        "\n# SEMILLA CREATIVA (inspiración, NO guion)\n\n"
+        "Usá estos elementos como chispa para que esta aventura NO se parezca a "
+        "otras. Reinterpretalos con libertad; no los copies literalmente ni uses "
+        "los nombres tal cual.\n\n" + items_seed + "\n"
+    )
+
     return f"""# DATOS DEL JUGADOR
 
 Género elegido: {genero.value}
 Descripción del personaje que dio el usuario:
 "{descripcion_personaje}"
+{secciones}
+# PRECEDENCIA DEL NOMBRE
+
+Si el jugador nombró a su personaje en su descripción, USÁ ESE NOMBRE y \
+descartá el sugerido. El nombre sugerido es solo un respaldo para cuando la \
+descripción no trae ninguno.
 
 # TAREA
 

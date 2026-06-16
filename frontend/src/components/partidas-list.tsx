@@ -108,6 +108,10 @@ export function PartidasList({ onReanudar }: PartidasListProps) {
                   </span>
                   <span>•</span>
                   <span>Turno {partida.turno_actual}</span>
+                  <span>•</span>
+                  <span title="Versión del contrato de prompts con que se creó">
+                    v{partida.prompt_version}
+                  </span>
                 </div>
               </div>
               <Button

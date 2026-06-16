@@ -46,6 +46,44 @@ def test_crear_partida_persiste_prompt_version(foundry_mock, partida_repo_mock, 
     assert guardada.metadata.prompt_version == PROMPT_VERSION
 
 
+def test_crear_partida_muestrea_seed_e_inyecta_inspiracion(
+    foundry_mock, partida_repo_mock, imagen_repo_mock
+):
+    foundry_mock.chat_json_raw.return_value = ("{}", fake_creacion_llm_response())
+    foundry_mock.generar_imagen.return_value = b"\x89PNG" + b"\x00" * 100
+    imagen_repo_mock.subir_imagen.return_value = "https://fake.blob/x.png"
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    svc.crear_partida(Genero.FANTASIA, "una arqueóloga escéptica")
+
+    user_prompt = foundry_mock.chat_json_raw.call_args_list[0][0][1]
+    assert "SEMILLA CREATIVA" in user_prompt
+
+
+def test_crear_partida_thread_premisa_y_tono_del_jugador(
+    foundry_mock, partida_repo_mock, imagen_repo_mock
+):
+    foundry_mock.chat_json_raw.return_value = ("{}", fake_creacion_llm_response())
+    foundry_mock.generar_imagen.return_value = b"\x89PNG" + b"\x00" * 100
+    imagen_repo_mock.subir_imagen.return_value = "https://fake.blob/x.png"
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    svc.crear_partida(
+        Genero.FANTASIA,
+        "una arqueóloga escéptica",
+        premisa="vengar a su maestro asesinado",
+        tono="épico sombrío",
+    )
+
+    user_prompt = foundry_mock.chat_json_raw.call_args_list[0][0][1]
+    assert "vengar a su maestro asesinado" in user_prompt
+    assert "épico sombrío" in user_prompt
+
+
 def test_avanzar_turno_crea_span_con_atributos(
     foundry_mock, partida_repo_mock, imagen_repo_mock, partida_de_ejemplo, span_exporter
 ):

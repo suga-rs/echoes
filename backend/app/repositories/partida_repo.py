@@ -61,7 +61,7 @@ class PartidaRepository:
             SELECT c.codigo_partida, c.personaje.nombre AS nombre_personaje,
                    c.metadata.turno_actual, c.metadata.estado,
                    c.metadata.genero, c.metadata.creada_en,
-                   c.metadata.actualizada_en
+                   c.metadata.actualizada_en, c.metadata.prompt_version
             FROM c
             {where}
             ORDER BY c.metadata.creada_en DESC

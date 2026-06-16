@@ -3,7 +3,7 @@
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class Genero(StrEnum):
@@ -107,6 +107,10 @@ class Partida(BaseModel):
 class StartPartidaRequest(BaseModel):
     genero: Genero
     descripcion_personaje: str = Field(..., min_length=10, max_length=300)
+    # Inputs creativos opcionales del jugador. Si se dan, el narrador los honra;
+    # si no, los cubre la semilla muestreada server-side.
+    premisa: str | None = Field(default=None, max_length=200)
+    tono: str | None = Field(default=None, max_length=100)
 
 
 class TurnoRequest(BaseModel):
@@ -168,6 +172,14 @@ class PartidaResumen(BaseModel):
     genero: Genero
     creada_en: datetime
     actualizada_en: datetime | None = None
+    # Versión del contrato de prompts con que se creó. Las partidas previas sin
+    # el campo (Cosmos schemaless) se presentan como la versión inicial.
+    prompt_version: str = "1.0.0"
+
+    @field_validator("prompt_version", mode="before")
+    @classmethod
+    def _normalizar_prompt_version(cls, v: str | None) -> str:
+        return v or "1.0.0"
 
 
 class RandomDescriptionRequest(BaseModel):

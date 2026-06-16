@@ -54,6 +54,7 @@ from app.services.prompts import (
     build_image_prompt,
     build_retry_user_prompt,
     build_turno_user_prompt,
+    sample_seed,
 )
 
 logger = get_logger("service.partidas")
@@ -76,13 +77,21 @@ class PartidaService:
 
     @telemetry.traced("crear_partida")
     def crear_partida(
-        self, genero: Genero, descripcion_personaje: str, owner_id: str = "0"
+        self,
+        genero: Genero,
+        descripcion_personaje: str,
+        owner_id: str = "0",
+        premisa: str | None = None,
+        tono: str | None = None,
     ) -> StartResponse:
         telemetry.add_span_attributes(genero=genero.value, prompt_version=PROMPT_VERSION)
         logger.info("Creando partida: genero=%s, prompt_version=%s", genero.value, PROMPT_VERSION)
 
         system = SYSTEM_PROMPT_CREACION
-        user = build_creacion_user_prompt(genero, descripcion_personaje)
+        seed = sample_seed(genero)
+        user = build_creacion_user_prompt(
+            genero, descripcion_personaje, seed, premisa=premisa, tono=tono
+        )
         creacion = self._invocar_llm_con_reintento(
             system, user, CREACION_JSON_SCHEMA, CreacionLLMResponse
         )

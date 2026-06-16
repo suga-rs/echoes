@@ -57,6 +57,8 @@ def start_partida(
         genero=body.genero,
         descripcion_personaje=body.descripcion_personaje,
         owner_id=user_id or "0",
+        premisa=body.premisa,
+        tono=body.tono,
     )
 
 
