@@ -16,6 +16,9 @@ class ImagenRepository:
         self.settings = settings or get_settings()
         self._service = self._build_service()
         self._container = self._service.get_container_client(self.settings.storage_container)
+        self._avatares = self._service.get_container_client(
+            self.settings.storage_avatares_container
+        )
 
     def _build_service(self) -> BlobServiceClient:
         if self.settings.storage_connection_string:
@@ -35,4 +38,17 @@ class ImagenRepository:
         )
         url = blob.url
         logger.info("Imagen subida: %s", url)
+        return url
+
+    def subir_avatar(self, user_id: str, contenido: bytes, ext: str, content_type: str) -> str:
+        # Nombre fijo por usuario + overwrite: cada subida reemplaza la anterior.
+        nombre = f"avatar/{user_id}.{ext}"
+        blob = self._avatares.get_blob_client(nombre)
+        blob.upload_blob(
+            contenido,
+            overwrite=True,
+            content_settings=ContentSettings(content_type=content_type),
+        )
+        url = blob.url
+        logger.info("Avatar subido: %s", url)
         return url

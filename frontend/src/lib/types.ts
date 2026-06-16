@@ -96,3 +96,25 @@ export interface PartidaResumen {
 export interface RandomDescriptionResponse {
   descripcion: string;
 }
+
+export interface UsuarioPublico {
+  id: string;
+  username: string;
+  creada_en: string;
+  avatar_url: string | null;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+  user: UsuarioPublico;
+}
+
+export interface PerfilResponse {
+  user: UsuarioPublico;
+  partidas: PartidaResumen[];
+}
+
+export interface AvatarResponse {
+  avatar_url: string;
+}

@@ -83,7 +83,9 @@ class PartidaService:
         self.imagenes = imagenes or ImagenRepository(self.settings)
 
     @telemetry.traced("crear_partida")
-    def crear_partida(self, genero: Genero, descripcion_personaje: str) -> StartResponse:
+    def crear_partida(
+        self, genero: Genero, descripcion_personaje: str, owner_id: str = "0"
+    ) -> StartResponse:
         telemetry.add_span_attributes(genero=genero.value, prompt_version=PROMPT_VERSION)
         logger.info("Creando partida: genero=%s, prompt_version=%s", genero.value, PROMPT_VERSION)
 
@@ -111,6 +113,7 @@ class PartidaService:
             turno_actual=1,
             estado=EstadoPartida.EN_CURSO,
             prompt_version=PROMPT_VERSION,
+            user_id=owner_id,
         )
 
         imagen_url = self._generar_imagen_segura(
@@ -266,8 +269,8 @@ class PartidaService:
         )
         return turno_obj.feedback
 
-    def listar_partidas(self) -> list[PartidaResumen]:
-        return self.partidas.list_all()
+    def listar_partidas(self, user_id: str | None = None) -> list[PartidaResumen]:
+        return self.partidas.list_all(user_id=user_id)
 
     def generar_descripcion_aleatoria(self, genero: Genero) -> str:
         system = (

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError, api, avanzarTurnoStream } from "@/lib/api";
+import { useAuthStore } from "@/store/auth-store";
 
 function jsonResponse(body: unknown, ok = true, status = 200): Response {
   return { ok, status, json: async () => body } as Response;
@@ -19,6 +20,7 @@ function sseResponse(chunks: string[]): Response {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  useAuthStore.getState().logout();
 });
 
 describe("api.request (vía api.*)", () => {
@@ -47,6 +49,32 @@ describe("api.request (vía api.*)", () => {
     expect(err).toBeInstanceOf(ApiClientError);
     expect((err as ApiClientError).status).toBe(404);
     expect((err as ApiClientError).code).toBe("partida_no_encontrada");
+  });
+
+  it("inyecta el header Authorization cuando hay token", async () => {
+    useAuthStore.getState().login("tok-xyz", {
+      id: "u1",
+      username: "Lyra",
+      creada_en: "2026-06-16T12:00:00Z",
+      avatar_url: null,
+    });
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => jsonResponse([]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.listarPartidas();
+
+    const headers = fetchMock.mock.calls[0][1].headers as Record<string, string>;
+    expect(headers.Authorization).toBe("Bearer tok-xyz");
+  });
+
+  it("no incluye Authorization cuando no hay token", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => jsonResponse([]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.listarPartidas();
+
+    const headers = fetchMock.mock.calls[0][1].headers as Record<string, string>;
+    expect(headers.Authorization).toBeUndefined();
   });
 });
 

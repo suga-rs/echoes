@@ -43,16 +43,34 @@ class PartidaRepository:
         self._container.upsert_item(doc)
         return partida
 
-    def list_all(self) -> list[PartidaResumen]:
-        query = """
+    def list_all(self, user_id: str | None = None) -> list[PartidaResumen]:
+        """Lista partidas. Si se pasa `user_id`, filtra por dueño; las partidas
+        previas sin el campo se tratan como del usuario "0" (Creator)."""
+        where = ""
+        params: list[dict] = []
+        if user_id is not None:
+            # IS_DEFINED cubre documentos legacy sin metadata.user_id cuando se
+            # consulta el bucket Creator ("0").
+            if user_id == "0":
+                where = "WHERE (NOT IS_DEFINED(c.metadata.user_id) OR c.metadata.user_id = @uid)"
+            else:
+                where = "WHERE c.metadata.user_id = @uid"
+            params.append({"name": "@uid", "value": user_id})
+
+        query = f"""
             SELECT c.codigo_partida, c.personaje.nombre AS nombre_personaje,
                    c.metadata.turno_actual, c.metadata.estado,
                    c.metadata.genero, c.metadata.creada_en,
                    c.metadata.actualizada_en
             FROM c
+            {where}
             ORDER BY c.metadata.creada_en DESC
         """
-        items = list(self._container.query_items(query=query, enable_cross_partition_query=True))
+        items = list(
+            self._container.query_items(
+                query=query, parameters=params, enable_cross_partition_query=True
+            )
+        )
         return [PartidaResumen.model_validate(item) for item in items]
 
     def exists(self, codigo_partida: str) -> bool:

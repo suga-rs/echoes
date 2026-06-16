@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, Plus, Package, PanelLeft, Home } from "lucide-react";
+import Link from "next/link";
+import { useQueryClient } from "@tanstack/react-query";
+import { Copy, Plus, Package, PanelLeft, Home, LogIn, LogOut, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,6 +13,8 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { usePartidaStore } from "@/store/partida-store";
+import { useAuthStore } from "@/store/auth-store";
+import { AuthModal } from "./auth-modal";
 import { ThemeToggle } from "./theme-toggle";
 
 interface HeaderProps {
@@ -21,11 +25,20 @@ interface HeaderProps {
 
 export function Header({ onNuevaPartida, onToggleSidebar, onVolverAlInicio }: HeaderProps) {
   const [showInventario, setShowInventario] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
   const [copiado, setCopiado] = useState(false);
   const codigo = usePartidaStore((s) => s.codigoPartida);
   const objetivo = usePartidaStore((s) => s.objetivo);
   const personaje = usePartidaStore((s) => s.personaje);
   const inventario = usePartidaStore((s) => s.inventario);
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
+  const queryClient = useQueryClient();
+
+  const cerrarSesion = () => {
+    logout();
+    queryClient.invalidateQueries({ queryKey: ["partidas"] });
+  };
 
   const copiarCodigo = async () => {
     if (!codigo) return;
@@ -86,6 +99,44 @@ export function Header({ onNuevaPartida, onToggleSidebar, onVolverAlInicio }: He
           </>
         )}
 
+        {user ? (
+          <>
+            <Button variant="ghost" size="sm" asChild title="Mi perfil">
+              <Link href="/perfil" className="flex items-center gap-2">
+                {user.avatar_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={user.avatar_url}
+                    alt={user.username}
+                    className="h-6 w-6 rounded-full object-cover"
+                  />
+                ) : (
+                  <User className="h-4 w-4" />
+                )}
+                <span className="text-xs max-w-24 truncate">{user.username}</span>
+              </Link>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={cerrarSesion}
+              title="Cerrar sesión"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
+          </>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowAuth(true)}
+            title="Iniciar sesión"
+          >
+            <LogIn className="h-4 w-4 mr-1" />
+            <span className="text-xs">Iniciar sesión</span>
+          </Button>
+        )}
+
         <ThemeToggle />
 
         {codigo && onVolverAlInicio && (
@@ -132,6 +183,8 @@ export function Header({ onNuevaPartida, onToggleSidebar, onVolverAlInicio }: He
           )}
         </DialogContent>
       </Dialog>
+
+      <AuthModal open={showAuth} onOpenChange={setShowAuth} />
     </header>
   );
 }

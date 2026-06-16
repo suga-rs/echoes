@@ -44,3 +44,18 @@ class ContenidoInapropiadoError(AppError):
 class FoundryError(AppError):
     status_code = 502
     code = "foundry_error"
+
+
+class UsuarioYaExisteError(AppError):
+    status_code = 409
+    code = "usuario_ya_existe"
+
+
+class CredencialesInvalidasError(AppError):
+    status_code = 401
+    code = "credenciales_invalidas"
+
+
+class NoAutenticadoError(AppError):
+    status_code = 401
+    code = "no_autenticado"

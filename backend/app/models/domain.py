@@ -65,6 +65,9 @@ class MetadataPartida(BaseModel):
     creada_en: datetime
     actualizada_en: datetime | None = None
     turno_actual: int = 0
+    # Dueño de la partida. Las partidas anónimas y las previas a la introducción
+    # de cuentas pertenecen al usuario "Creator" (user_id == "0").
+    user_id: str = "0"
     estado: EstadoPartida = EstadoPartida.EN_CURSO
     final: TipoFinal | None = None
     razon_fin: str | None = None
@@ -158,3 +161,53 @@ class RandomDescriptionRequest(BaseModel):
 
 class RandomDescriptionResponse(BaseModel):
     descripcion: str
+
+
+# Usuarios / Autenticación
+
+
+class Usuario(BaseModel):
+    """Documento de usuario persistido en Cosmos (container `usuarios`)."""
+
+    id: str
+    username: str
+    username_lower: str
+    password_hash: str
+    creada_en: datetime
+    avatar_url: str | None = None
+
+
+class UsuarioPublico(BaseModel):
+    """Vista pública del usuario: nunca expone el hash de la contraseña."""
+
+    id: str
+    username: str
+    creada_en: datetime
+    avatar_url: str | None = None
+
+
+class RegisterRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=32)
+    # bcrypt opera sobre los primeros 72 bytes; limitamos arriba para evitar
+    # sorpresas de truncado silencioso.
+    password: str = Field(..., min_length=8, max_length=72)
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=32)
+    password: str = Field(..., min_length=1, max_length=72)
+
+
+class AuthResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UsuarioPublico
+
+
+class PerfilResponse(BaseModel):
+    user: UsuarioPublico
+    partidas: list[PartidaResumen] = Field(default_factory=list)
+
+
+class AvatarResponse(BaseModel):
+    avatar_url: str

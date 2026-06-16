@@ -21,6 +21,9 @@ dependencies = [
     "jsonschema>=4.23.0",
     "python-dotenv>=1.0.1",
     "httpx>=0.28.0",
+    "bcrypt>=4.0.0",
+    "pyjwt>=2.9.0",
+    "python-multipart>=0.0.12",
 ]
 
 [project.optional-dependencies]
@@ -48,7 +51,7 @@ select = ["E", "F", "I", "N", "UP", "B", "SIM"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-pythonpath = ["tests"]
+pythonpath = ["tests", "."]
 addopts = "--cov=app --cov-report=term-missing --cov-fail-under=60"
 
 [tool.coverage.run]

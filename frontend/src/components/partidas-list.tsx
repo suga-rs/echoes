@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader } from "@/components/ui/loader";
 import { formatFechaHora } from "@/lib/utils";
+import { useAuthStore } from "@/store/auth-store";
 
 const GENERO_EMOJI: Record<string, string> = {
   fantasía: "🗡️",
@@ -21,8 +22,11 @@ interface PartidasListProps {
 
 export function PartidasList({ onReanudar }: PartidasListProps) {
   const [busqueda, setBusqueda] = useState("");
+  // Incluimos el id de usuario en la key para que la lista se refetchee al
+  // iniciar o cerrar sesión (anónimo == "0").
+  const userId = useAuthStore((s) => s.user?.id ?? "0");
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["partidas"],
+    queryKey: ["partidas", userId],
     queryFn: () => api.listarPartidas(),
   });
 
