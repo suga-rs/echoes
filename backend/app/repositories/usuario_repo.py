@@ -38,7 +38,7 @@ class UsuarioRepository:
 
     def get_by_username(self, username_lower: str) -> Usuario | None:
         query = "SELECT * FROM c WHERE c.username_lower = @u"
-        params = [{"name": "@u", "value": username_lower}]
+        params: list[dict[str, object]] = [{"name": "@u", "value": username_lower}]
         items = list(
             self._container.query_items(
                 query=query, parameters=params, enable_cross_partition_query=True
