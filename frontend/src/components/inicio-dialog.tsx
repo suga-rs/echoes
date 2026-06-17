@@ -215,7 +215,7 @@ export function InicioDialog({ open, onOpenChange }: InicioDialogProps) {
 
         <DialogFooter>
           {mutation.isPending ? (
-            <Loader message="Generando tu aventura..." />
+            <Loader message="Creando tu personaje y la primera escena…" />
           ) : (
             <Button
               onClick={() => genero && mutation.mutate({ genero, descripcion, premisa, tono })}

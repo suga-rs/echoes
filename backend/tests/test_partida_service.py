@@ -15,6 +15,10 @@ from app.services.partida_service import PartidaService
 from app.services.prompts import PROMPT_VERSION, build_turno_user_prompt
 
 
+def _es_prompt_de_referencia(prompt: str) -> bool:
+    return "reference portrait" in prompt.lower()
+
+
 def test_crear_partida_ok(foundry_mock, partida_repo_mock, imagen_repo_mock):
     foundry_mock.chat_json_raw.return_value = ("{}", fake_creacion_llm_response())
     foundry_mock.generar_imagen.return_value = b"\x89PNG" + b"\x00" * 100
@@ -568,3 +572,120 @@ def test_generar_imagen_turno_falla_foundry(
     )
     with pytest.raises(FoundryError):
         svc.generar_imagen_turno("test-abc-123", 2)
+
+
+# --- Referencia visual del personaje (flujo de imagen anclada) ---------------
+
+
+def test_primera_imagen_genera_referencia_no_cuenta_al_cupo_y_escena_via_edit(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    partida_de_ejemplo.metadata.usa_referencia_visual = True
+    partida_de_ejemplo.historial = [_turno_con_escena(2)]
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+    foundry_mock.generar_imagen.return_value = b"REF"  # referencia
+    foundry_mock.editar_imagen.return_value = b"SCENE"  # escena
+    imagen_repo_mock.subir_referencia.return_value = "https://fake.blob/ref.jpg"
+    imagen_repo_mock.subir_imagen.return_value = "https://fake.blob/scene.png"
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    url = svc.generar_imagen_turno("test-abc-123", 2)
+
+    assert url == "https://fake.blob/scene.png"
+    # La referencia se generó una vez (generar_imagen) y la escena vía edit.
+    foundry_mock.generar_imagen.assert_called_once()
+    foundry_mock.editar_imagen.assert_called_once()
+    # La referencia se guardó en el personaje.
+    assert partida_de_ejemplo.personaje.referencia_visual_url == "https://fake.blob/ref.jpg"
+    # Solo la escena cuenta contra el cupo; la referencia no.
+    assert partida_de_ejemplo.metadata.imagenes_generadas == 1
+
+
+def test_segunda_imagen_reusa_la_referencia_sin_regenerarla(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    partida_de_ejemplo.metadata.usa_referencia_visual = True
+    partida_de_ejemplo.personaje.referencia_visual_url = "https://fake.blob/ref.jpg"
+    partida_de_ejemplo.historial = [_turno_con_escena(2)]
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+    imagen_repo_mock.descargar_imagen.return_value = b"REF"
+    foundry_mock.editar_imagen.return_value = b"SCENE"
+    imagen_repo_mock.subir_imagen.return_value = "https://fake.blob/scene.png"
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    url = svc.generar_imagen_turno("test-abc-123", 2)
+
+    assert url == "https://fake.blob/scene.png"
+    foundry_mock.generar_imagen.assert_not_called()  # no se regenera la referencia
+    imagen_repo_mock.descargar_imagen.assert_called_once_with("https://fake.blob/ref.jpg")
+    foundry_mock.editar_imagen.assert_called_once()
+    assert partida_de_ejemplo.metadata.imagenes_generadas == 1
+
+
+def test_falla_referencia_degrada_a_imagen_por_texto(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    partida_de_ejemplo.metadata.usa_referencia_visual = True
+    partida_de_ejemplo.historial = [_turno_con_escena(2)]
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+
+    # generar_imagen falla SOLO para el prompt de referencia; el fallback por
+    # texto (escena) usa el mismo método y debe funcionar.
+    def fake_generar(prompt):
+        if _es_prompt_de_referencia(prompt):
+            raise Exception("ref boom")
+        return b"SCENE_TEXT"
+
+    foundry_mock.generar_imagen.side_effect = fake_generar
+    imagen_repo_mock.subir_imagen.return_value = "https://fake.blob/scene.png"
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    url = svc.generar_imagen_turno("test-abc-123", 2)
+
+    assert url == "https://fake.blob/scene.png"
+    # La escena se generó por texto, no por edit.
+    foundry_mock.editar_imagen.assert_not_called()
+    # La referencia quedó sin setear → se reintenta en la próxima llamada.
+    assert partida_de_ejemplo.personaje.referencia_visual_url is None
+
+
+def test_chokepoint_en_cupo_no_genera_referencia_ni_escena(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    partida_de_ejemplo.metadata.usa_referencia_visual = True
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    res = svc._generar_imagen_segura(
+        codigo_partida="test-abc-123",
+        turno=1,
+        personaje=partida_de_ejemplo.personaje,
+        descripcion_escena_en="A dim chamber",
+        genero=Genero.FANTASIA,
+        imagenes_previas=25,
+        usa_referencia=True,
+    )
+
+    assert res is None
+    foundry_mock.generar_imagen.assert_not_called()
+    foundry_mock.editar_imagen.assert_not_called()
+    assert partida_de_ejemplo.personaje.referencia_visual_url is None

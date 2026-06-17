@@ -461,6 +461,20 @@ JSON. No incluyas texto fuera del JSON.
 """
 
 
+def build_reference_prompt(descripcion_visual_personaje_en: str, genero: Genero) -> str:
+    """Prompt para la imagen de referencia canónica del personaje: retrato de
+    cuerpo entero sobre fondo neutro, en el estilo del género. SIN escena: la
+    referencia ancla la identidad y cada turno le agrega la escena vía edit."""
+    estilo = ESTILO_POR_GENERO[genero]
+    return (
+        f"Full-body character reference portrait of a single subject, "
+        f"standing, neutral grey background. "
+        f"Character: {descripcion_visual_personaje_en}. "
+        f"Style: {estilo}. "
+        f"Centered, full figure visible, no text, no watermarks, no logos."
+    )
+
+
 def build_image_prompt(
     descripcion_visual_personaje_en: str,
     descripcion_escena_en: str,

@@ -232,6 +232,57 @@ class FoundryClient:
 
         raise FoundryError("Imagen no contiene datos reconocibles")
 
+    def editar_imagen(
+        self,
+        prompt: str,
+        reference_bytes: bytes,
+        *,
+        size: str = "1536x1024",
+        input_fidelity: str = "high",
+    ) -> bytes:
+        """Genera una imagen de escena anclada a una imagen de referencia del
+        personaje vía images.edit. input_fidelity="high" preserva la identidad
+        (cara/atuendo) de la referencia."""
+        t0 = time.perf_counter()
+        try:
+            response = self._with_retries(
+                lambda: self._client.images.edit(
+                    model=self.settings.image_deployment,
+                    image=("reference.jpg", reference_bytes, "image/jpeg"),
+                    prompt=prompt,
+                    size=size,
+                    n=1,
+                    input_fidelity=input_fidelity,
+                    output_format="jpeg",
+                    output_compression=80,
+                )
+            )
+        except Exception as e:
+            telemetry.record_llm_error(operation="image_edit", tipo=type(e).__name__)
+            logger.exception("Foundry image edit error")
+            raise FoundryError(f"Error editando imagen: {e}") from e
+
+        telemetry.record_llm_call(
+            operation="image_edit",
+            model=self.settings.image_deployment,
+            latency_ms=(time.perf_counter() - t0) * 1000,
+            usage=getattr(response, "usage", None),
+        )
+
+        if not response.data:
+            raise FoundryError("Respuesta de imagen (edit) vacía")
+
+        item = response.data[0]
+        b64 = getattr(item, "b64_json", None)
+        if b64:
+            return base64.b64decode(b64)
+
+        url = getattr(item, "url", None)
+        if url:
+            raise FoundryError("Imagen (edit) devuelta como URL; configurar para b64_json")
+
+        raise FoundryError("Imagen (edit) no contiene datos reconocibles")
+
     async def chat_streaming_async(
         self,
         system_prompt: str,

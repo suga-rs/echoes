@@ -40,6 +40,28 @@ class ImagenRepository:
         logger.info("Imagen subida: %s", url)
         return url
 
+    def subir_referencia(self, codigo_partida: str, contenido: bytes) -> str:
+        # Nombre fijo por partida + overwrite: la referencia canónica del
+        # personaje se genera una sola vez y se reutiliza en cada imagen.
+        nombre = f"{codigo_partida}/referencia.jpg"
+        blob = self._container.get_blob_client(nombre)
+        blob.upload_blob(
+            contenido,
+            overwrite=True,
+            content_settings=ContentSettings(content_type="image/jpeg"),
+        )
+        url = blob.url
+        logger.info("Referencia de personaje subida: %s", url)
+        return url
+
+    def descargar_imagen(self, url: str) -> bytes:
+        # El URL es {container.url}/{nombre}; derivamos el nombre para reutilizar
+        # el cliente autenticado del contenedor (el contenedor puede ser privado).
+        prefijo = self._container.url.rstrip("/") + "/"
+        nombre = url[len(prefijo) :] if url.startswith(prefijo) else url.rsplit("/", 1)[-1]
+        blob = self._container.get_blob_client(nombre)
+        return blob.download_blob().readall()
+
     def subir_avatar(self, user_id: str, contenido: bytes, ext: str, content_type: str) -> str:
         # Nombre fijo por usuario + overwrite: cada subida reemplaza la anterior.
         nombre = f"avatar/{user_id}.{ext}"

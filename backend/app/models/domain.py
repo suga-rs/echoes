@@ -41,6 +41,11 @@ class Personaje(BaseModel):
     descripcion_narrativa: str
     descripcion_visual_en: str
     inventario: list[str] = Field(default_factory=list)
+    # URL de la imagen de referencia canónica del personaje (retrato de cuerpo
+    # entero, fondo neutro). Se genera una sola vez por partida y se reutiliza
+    # como ancla visual en cada imagen de escena vía images.edit. None hasta que
+    # se genera la primera imagen; partidas previas deserializan como None.
+    referencia_visual_url: str | None = None
 
 
 class NPC(BaseModel):
@@ -90,6 +95,10 @@ class MetadataPartida(BaseModel):
     # Versión de prompts/contrato con la que se creó la partida (auditoría).
     # Las partidas previas sin el campo deserializan como None (Cosmos schemaless).
     prompt_version: str | None = None
+    # Gate de "solo partidas nuevas" para el flujo de referencia visual del
+    # personaje. Lo activa crear_partida; las partidas previas deserializan como
+    # False y siguen en el flujo de imagen por texto (images.generate).
+    usa_referencia_visual: bool = False
 
 
 class Partida(BaseModel):

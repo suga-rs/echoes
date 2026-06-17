@@ -3,7 +3,13 @@
 import pytest
 from pydantic import ValidationError
 
-from app.models.domain import Genero, PartidaResumen, StartPartidaRequest
+from app.models.domain import (
+    Genero,
+    MetadataPartida,
+    PartidaResumen,
+    Personaje,
+    StartPartidaRequest,
+)
 
 
 def _resumen_kwargs(**extra) -> dict:
@@ -78,3 +84,26 @@ def test_resumen_normaliza_prompt_version_nula_a_1_0_0():
 def test_resumen_normaliza_prompt_version_ausente_a_1_0_0():
     r = PartidaResumen.model_validate(_resumen_kwargs())
     assert r.prompt_version == "1.0.0"
+
+
+# --- Referencia visual del personaje (partidas previas = defaults seguros) ---
+
+
+def test_personaje_legacy_sin_referencia_visual_default_none():
+    # Documento previo al cambio: sin el campo, deserializa como None.
+    pj = Personaje.model_validate(
+        {
+            "nombre": "Lyra",
+            "descripcion_narrativa": "Arqueóloga escéptica.",
+            "descripcion_visual_en": "Woman around 40, dark hair.",
+        }
+    )
+    assert pj.referencia_visual_url is None
+
+
+def test_metadata_legacy_sin_flag_referencia_default_false():
+    # Documento previo al cambio: sin el campo, queda en el flujo por texto.
+    meta = MetadataPartida.model_validate(
+        {"genero": "fantasía", "creada_en": "2026-06-16T00:00:00Z"}
+    )
+    assert meta.usa_referencia_visual is False

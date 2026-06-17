@@ -7,8 +7,10 @@ import pytest
 from app.models.domain import Genero
 from app.services.prompts import (
     CREATION_POOLS,
+    ESTILO_POR_GENERO,
     SemillaCreativa,
     build_creacion_user_prompt,
+    build_reference_prompt,
     sample_seed,
 )
 
@@ -103,3 +105,26 @@ def test_prompt_incluye_precedencia_de_nombre():
     # El nombre de la seed es solo respaldo; el del jugador (si lo da) manda.
     assert "respaldo" in prompt.lower()
     assert "SEED_NOMBRE" in prompt
+
+
+# --- build_reference_prompt --------------------------------------------------
+
+
+def test_reference_prompt_incluye_visual_estilo_y_encuadre_sin_escena():
+    visual = "Woman around 40, dark brown wavy hair, olive canvas field jacket"
+    prompt = build_reference_prompt(visual, Genero.FANTASIA)
+
+    # Incluye la descripción visual del personaje y el estilo del género.
+    assert visual in prompt
+    assert ESTILO_POR_GENERO[Genero.FANTASIA] in prompt
+
+    low = prompt.lower()
+    # Encuadre de ficha de referencia: cuerpo entero, fondo neutro, un solo
+    # sujeto, sin texto.
+    assert "full-body" in low
+    assert "neutral" in low and "background" in low
+    assert "single" in low
+    assert "no text" in low
+
+    # NO debe contener una descripción de escena (eso lo aporta el edit por turno).
+    assert "scene:" not in low

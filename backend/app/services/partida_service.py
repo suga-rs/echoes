@@ -52,6 +52,7 @@ from app.services.prompts import (
     SYSTEM_PROMPT_TURNO,
     build_creacion_user_prompt,
     build_image_prompt,
+    build_reference_prompt,
     build_retry_user_prompt,
     build_turno_user_prompt,
     sample_seed,
@@ -115,15 +116,18 @@ class PartidaService:
             estado=EstadoPartida.EN_CURSO,
             prompt_version=PROMPT_VERSION,
             user_id=owner_id,
+            # Las partidas nuevas anclan sus imágenes a la referencia del personaje.
+            usa_referencia_visual=True,
         )
 
         imagen_url = self._generar_imagen_segura(
             codigo_partida=codigo,
             turno=1,
-            descripcion_visual_personaje_en=personaje.descripcion_visual_en,
+            personaje=personaje,
             descripcion_escena_en=creacion.primera_escena.descripcion_imagen_en,
             genero=genero,
             imagenes_previas=0,
+            usa_referencia=metadata.usa_referencia_visual,
         )
 
         primer_turno = TurnoHistorial(
@@ -202,10 +206,11 @@ class PartidaService:
             imagen_url = self._generar_imagen_segura(
                 codigo_partida=codigo_partida,
                 turno=nuevo_turno_num,
-                descripcion_visual_personaje_en=partida.personaje.descripcion_visual_en,
+                personaje=partida.personaje,
                 descripcion_escena_en=descripcion_escena,
                 genero=partida.metadata.genero,
                 imagenes_previas=partida.metadata.imagenes_generadas,
+                usa_referencia=partida.metadata.usa_referencia_visual,
             )
             if imagen_url:
                 partida.metadata.imagenes_generadas += 1
@@ -391,10 +396,11 @@ class PartidaService:
         *,
         codigo_partida: str,
         turno: int,
-        descripcion_visual_personaje_en: str,
+        personaje: Personaje,
         descripcion_escena_en: str,
         genero: Genero,
         imagenes_previas: int,
+        usa_referencia: bool,
     ) -> str | None:
         if imagenes_previas >= self.settings.max_imagenes_por_partida:
             logger.info("Límite de imágenes alcanzado")
@@ -402,12 +408,46 @@ class PartidaService:
 
         try:
             prompt = build_image_prompt(
-                descripcion_visual_personaje_en, descripcion_escena_en, genero
+                personaje.descripcion_visual_en, descripcion_escena_en, genero
             )
-            png = self.foundry.generar_imagen(prompt)
+            # Flujo nuevo: anclar la escena a la referencia canónica del personaje
+            # vía images.edit. Si la referencia falla, degradamos a imagen por
+            # texto para igual renderizar algo (el turno no se rompe).
+            ref_bytes = (
+                self._asegurar_referencia_visual(codigo_partida, personaje, genero)
+                if usa_referencia
+                else None
+            )
+            if ref_bytes is not None:
+                png = self.foundry.editar_imagen(prompt, ref_bytes)
+            else:
+                png = self.foundry.generar_imagen(prompt)
             return self.imagenes.subir_imagen(codigo_partida, turno, png)
         except Exception:
             logger.exception("Falló generación de imagen para %s", codigo_partida)
+            return None
+
+    def _asegurar_referencia_visual(
+        self, codigo_partida: str, personaje: Personaje, genero: Genero
+    ) -> bytes | None:
+        """Garantiza la referencia visual canónica del personaje y devuelve sus
+        bytes. Se genera una sola vez (memoizada en personaje.referencia_visual_url)
+        y NO cuenta contra el cupo de imágenes. Devuelve None si la generación o
+        descarga falla; el llamador degrada entonces a imagen por texto."""
+        if personaje.referencia_visual_url:
+            try:
+                return self.imagenes.descargar_imagen(personaje.referencia_visual_url)
+            except Exception:
+                logger.exception("No se pudo descargar la referencia visual de %s", codigo_partida)
+                return None
+
+        try:
+            prompt = build_reference_prompt(personaje.descripcion_visual_en, genero)
+            png = self.foundry.generar_imagen(prompt)
+            personaje.referencia_visual_url = self.imagenes.subir_referencia(codigo_partida, png)
+            return png
+        except Exception:
+            logger.exception("Falló la generación de la referencia visual de %s", codigo_partida)
             return None
 
     def generar_imagen_turno(self, codigo_partida: str, turno_num: int) -> str:
@@ -438,10 +478,11 @@ class PartidaService:
         imagen_url = self._generar_imagen_segura(
             codigo_partida=codigo_partida,
             turno=turno_num,
-            descripcion_visual_personaje_en=partida.personaje.descripcion_visual_en,
+            personaje=partida.personaje,
             descripcion_escena_en=turno.descripcion_escena_en,
             genero=partida.metadata.genero,
             imagenes_previas=partida.metadata.imagenes_generadas,
+            usa_referencia=partida.metadata.usa_referencia_visual,
         )
         if not imagen_url:
             raise FoundryError("Falló la generación de la imagen")
@@ -569,10 +610,11 @@ class PartidaService:
                 self._generar_imagen_segura,
                 codigo_partida=codigo_partida,
                 turno=nuevo_turno_num,
-                descripcion_visual_personaje_en=partida.personaje.descripcion_visual_en,
+                personaje=partida.personaje,
                 descripcion_escena_en=turno_llm.generar_imagen.descripcion_escena_en,
                 genero=partida.metadata.genero,
                 imagenes_previas=partida.metadata.imagenes_generadas,
+                usa_referencia=partida.metadata.usa_referencia_visual,
             )
             if imagen_url:
                 partida.metadata.imagenes_generadas += 1
