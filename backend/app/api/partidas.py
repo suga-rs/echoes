@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 from fastapi.responses import StreamingResponse
 
-from app.api.dependencies import get_optional_user, get_partida_service
+from app.api.dependencies import get_current_user, get_optional_user, get_partida_service
 from app.core.exceptions import AppError
 from app.core.logging import get_logger
 from app.models.domain import (
@@ -38,6 +38,15 @@ def listar_partidas(
     return service.listar_partidas(user_id=user_id or "0")
 
 
+@router.delete("/{codigo}", status_code=status.HTTP_204_NO_CONTENT)
+def eliminar_partida(
+    codigo: str,
+    service: Annotated[PartidaService, Depends(get_partida_service)],
+    user_id: Annotated[str, Depends(get_current_user)],
+) -> None:
+    service.eliminar_partida(codigo, user_id)
+
+
 @router.post("/random-description", response_model=RandomDescriptionResponse)
 def random_description(
     body: RandomDescriptionRequest,
@@ -57,6 +66,8 @@ def start_partida(
         genero=body.genero,
         descripcion_personaje=body.descripcion_personaje,
         owner_id=user_id or "0",
+        premisa=body.premisa,
+        tono=body.tono,
     )
 
 

@@ -12,6 +12,8 @@ TURNO_JSON_SCHEMA: dict[str, Any] = {
         "actualizaciones_estado",
         "generar_imagen",
         "estado_aventura",
+        "arco",
+        "resumen_historia",
     ],
     "additionalProperties": False,
     "properties": {
@@ -20,7 +22,12 @@ TURNO_JSON_SCHEMA: dict[str, Any] = {
             "type": "array",
             "minItems": 3,
             "maxItems": 3,
-            "items": {"type": "string", "minLength": 3, "maxLength": 100},
+            "items": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 100,
+                "description": "En español rioplatense (es-AR).",
+            },
         },
         "actualizaciones_estado": {
             "type": "object",
@@ -36,8 +43,20 @@ TURNO_JSON_SCHEMA: dict[str, Any] = {
             "additionalProperties": False,
             "properties": {
                 "ubicacion_nueva": {"type": ["string", "null"]},
-                "agregar_inventario": {"type": "array", "items": {"type": "string"}},
-                "quitar_inventario": {"type": "array", "items": {"type": "string"}},
+                "agregar_inventario": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "description": "En español rioplatense (es-AR).",
+                    },
+                },
+                "quitar_inventario": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "description": "En español rioplatense (es-AR).",
+                    },
+                },
                 "evento_clave": {"type": ["string", "null"]},
                 "npc_encontrado": {
                     "oneOf": [
@@ -91,6 +110,16 @@ TURNO_JSON_SCHEMA: dict[str, Any] = {
                 "razon_fin": {"type": ["string", "null"]},
             },
         },
+        "arco": {
+            "type": "object",
+            "required": ["fase_narrativa", "tension"],
+            "additionalProperties": False,
+            "properties": {
+                "fase_narrativa": {"enum": ["introduccion", "desarrollo", "climax", "resolucion"]},
+                "tension": {"type": "integer", "minimum": 0, "maximum": 10},
+            },
+        },
+        "resumen_historia": {"type": "string", "maxLength": 1500},
     },
 }
 
@@ -115,7 +144,10 @@ CREACION_JSON_SCHEMA: dict[str, Any] = {
                 "descripcion_visual_en": {"type": "string", "minLength": 50},
                 "inventario_inicial": {
                     "type": "array",
-                    "items": {"type": "string"},
+                    "items": {
+                        "type": "string",
+                        "description": "En español rioplatense (es-AR).",
+                    },
                     "maxItems": 5,
                 },
             },
@@ -126,7 +158,10 @@ CREACION_JSON_SCHEMA: dict[str, Any] = {
             "additionalProperties": False,
             "properties": {
                 "ubicacion_inicial": {"type": "string"},
-                "objetivo": {"type": "string"},
+                "objetivo": {
+                    "type": "string",
+                    "description": "En español rioplatense (es-AR).",
+                },
             },
         },
         "primera_escena": {
@@ -139,7 +174,10 @@ CREACION_JSON_SCHEMA: dict[str, Any] = {
                     "type": "array",
                     "minItems": 3,
                     "maxItems": 3,
-                    "items": {"type": "string"},
+                    "items": {
+                        "type": "string",
+                        "description": "En español rioplatense (es-AR).",
+                    },
                 },
                 "descripcion_imagen_en": {"type": "string"},
             },
@@ -181,12 +219,19 @@ class EstadoAventuraLLM(BaseModel):
     razon_fin: str | None = None
 
 
+class ArcoLLM(BaseModel):
+    fase_narrativa: str
+    tension: int
+
+
 class TurnoLLMResponse(BaseModel):
     narrativa: str
     opciones: list[str]
     actualizaciones_estado: ActualizacionesEstado
     generar_imagen: GenerarImagen
     estado_aventura: EstadoAventuraLLM
+    arco: ArcoLLM
+    resumen_historia: str
 
 
 class PersonajeLLM(BaseModel):

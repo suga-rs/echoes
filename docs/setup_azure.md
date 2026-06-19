@@ -298,9 +298,9 @@ az cognitiveservices account deployment create \
   --sku-capacity 1
 ```
 
-Diferencias clave con DALL·E 3:
+Diferencias clave con gpt-image-2:
 
-- `gpt-image-2` factura por tokens de entrada (texto del prompt), no por imagen. Como nuestros prompts son ~200 tokens, el costo por imagen baja sustancialmente respecto a DALL·E 3.
+- `gpt-image-2` factura por tokens de entrada (texto del prompt), no por imagen. Como nuestros prompts son ~200 tokens, el costo por imagen baja sustancialmente respecto a gpt-image-2.
 - Soporta resoluciones flexibles. Para apaisado cinematográfico vamos a pedir 1536×1024 al invocarlo (no se configura acá).
 - La capacidad de imagen se mide diferente; `--sku-capacity 1` alcanza para el ritmo de uso del proyecto.
 
@@ -527,7 +527,6 @@ APPLICATIONINSIGHTS_CONNECTION_STRING=<connection_string>
 
 # App config
 LOG_LEVEL=INFO
-MAX_TURNOS_POR_PARTIDA=25
 MAX_IMAGENES_POR_PARTIDA=25
 ```
 

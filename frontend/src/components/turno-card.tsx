@@ -5,7 +5,6 @@ import Image from "next/image";
 import { Flag, ImagePlus } from "lucide-react";
 import type { TurnoHistorial } from "@/lib/types";
 import { ImagenModal } from "@/components/imagen-modal";
-import { Button } from "@/components/ui/button";
 import { api, ApiClientError } from "@/lib/api";
 import { usePartidaStore } from "@/store/partida-store";
 
@@ -57,7 +56,7 @@ export function TurnoCard({ turno, esUltimo, imagenCargando = false }: TurnoCard
     <article className="animate-fade-in mb-8">
       {turno.accion_jugador !== "<inicio>" && (
         <div className="mb-4 flex justify-end">
-          <div className="bg-primary/15 text-foreground px-4 py-2 rounded-2xl rounded-tr-sm max-w-[80%] text-sm">
+          <div className="fuente-narrativa bg-primary/15 text-foreground px-4 py-2 rounded-2xl rounded-tr-sm max-w-[80%] text-sm">
             <span className="text-xs text-muted-foreground block mb-0.5">Tu acción:</span>
             {turno.accion_jugador}
           </div>
@@ -90,40 +89,43 @@ export function TurnoCard({ turno, esUltimo, imagenCargando = false }: TurnoCard
         </>
       ) : imagenCargando || generando ? (
         <div className="w-full aspect-[3/2] mb-4 rounded-lg bg-muted animate-pulse" />
-      ) : (
-        <div className="mb-4 flex flex-col items-center gap-2">
-          {limiteAlcanzado ? (
-            <p className="text-xs text-muted-foreground">
-              Alcanzaste el límite de imágenes de esta partida.
-            </p>
-          ) : (
-            <>
-              <Button variant="outline" size="sm" onClick={() => void generarImagen()}>
-                <ImagePlus className="h-4 w-4 mr-2" />
-                Generar imagen
-              </Button>
-              {error && <p className="text-xs text-destructive">{error}</p>}
-            </>
-          )}
-        </div>
-      )}
+      ) : null}
 
       <div className="bg-card rounded-lg p-5 border">
         <div className="flex items-center justify-between mb-2">
           <div className="text-xs text-muted-foreground uppercase tracking-wide">
             Turno {turno.turno}
           </div>
-          <button
-            type="button"
-            onClick={() => void marcarIncoherente()}
-            disabled={marcado}
-            aria-label="Marcar turno como incoherente"
-            className="text-xs text-muted-foreground hover:text-destructive flex items-center gap-1 disabled:opacity-60"
-          >
-            <Flag className="h-3 w-3" />
-            {marcado ? "Marcado" : "Incoherente"}
-          </button>
+          <div className="flex items-center gap-3">
+            {!turno.imagen_url && !generando && !imagenCargando && !limiteAlcanzado && (
+              <button
+                type="button"
+                onClick={() => void generarImagen()}
+                aria-label="Ilustrar esta escena"
+                title="Ilustrar esta escena"
+                className="text-muted-foreground hover:text-primary flex items-center"
+              >
+                <ImagePlus className="h-4 w-4" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => void marcarIncoherente()}
+              disabled={marcado}
+              aria-label="Marcar turno como incoherente"
+              className="text-xs text-muted-foreground hover:text-destructive flex items-center gap-1 disabled:opacity-60"
+            >
+              <Flag className="h-3 w-3" />
+              {marcado ? "Marcado" : "Incoherente"}
+            </button>
+          </div>
         </div>
+        {limiteAlcanzado && (
+          <p className="text-xs text-muted-foreground mb-2">
+            Alcanzaste el límite de imágenes de esta partida.
+          </p>
+        )}
+        {error && <p className="text-xs text-destructive mb-2">{error}</p>}
         <p className="narrativa whitespace-pre-wrap">{turno.narrativa}</p>
       </div>
     </article>

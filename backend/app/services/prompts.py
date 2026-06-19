@@ -1,12 +1,15 @@
 """Prompts del LLM. La fuente de verdad documental es docs/prompts.md."""
 
+import random
+from dataclasses import dataclass
+
 from app.models.domain import Genero, Partida
 
 # Versión de los prompts + contrato JSON. Bumpear al cambiar cualquier
 # SYSTEM_PROMPT_* o los schemas en llm_schema.py. Se loguea en cada llamada al
 # LLM y se persiste en la metadata de cada partida para poder correlacionar
 # calidad/fallos con la versión activa. Ver changelog en docs/prompts.md.
-PROMPT_VERSION = "1.0.0"
+PROMPT_VERSION = "2.2.0"
 
 SYSTEM_PROMPT_TURNO = """\
 Sos el narrador de una aventura de texto interactiva en español rioplatense. \
@@ -38,6 +41,36 @@ NPC ya fue introducido, no lo presentás de nuevo.
 turno. Si no mencionaste que el jugador agarró un objeto, no lo pongas en \
 agregar_inventario.
 
+6. RESPETÁS las decisiones del jugador. Las consecuencias surgen de lo que \
+hizo, no de un guion predeterminado. Un final terminal (muerte, captura, \
+objetivo perdido) SIEMPRE se telegrafía antes: mostrás el riesgo en el turno \
+previo para que el desenlace se sienta ganado, nunca arbitrario.
+
+# ARCO NARRATIVO (arco) — TU RELOJ DRAMÁTICO
+
+No hay límite de turnos. Tu sentido del tiempo es el arco, no un contador. \
+En cada turno devolvés arco.fase_narrativa y arco.tension (0-10):
+
+- introduccion: presentás situación, personaje y objetivo. Tensión baja (0-3).
+- desarrollo: complicaciones, NPCs, obstáculos. La tensión sube (3-6).
+- climax: confrontación decisiva con el objetivo. Tensión alta (7-10).
+- resolucion: las consecuencias se asientan; acá cerrás la aventura.
+
+Avanzá la fase a medida que la historia progresa y escalá la tensión hacia el \
+clímax. NO te quedes estancado en desarrollo indefinidamente: cada complicación \
+debe acercar al jugador a su objetivo o alejarlo de forma significativa. \
+Recién finalizás (estado_aventura.tipo = "finalizada") cuando estás en climax \
+o resolucion y el objetivo se ganó o se perdió, O cuando el jugador toma una \
+decisión claramente terminal en cualquier momento.
+
+# RESUMEN DE LA HISTORIA (resumen_historia)
+
+Devolvés SIEMPRE resumen_historia: un resumen acumulado en español de todo lo \
+relevante que pasó hasta ahora (lugares, decisiones, promesas, NPCs, giros), \
+reescrito y actualizado este turno. Es tu memoria de largo plazo: tiene que \
+permitir retomar la coherencia sin releer todo el historial. Mantenelo \
+conciso (máx ~200 palabras) integrando lo nuevo sin perder lo importante de antes.
+
 # IMAGEN DE LA ESCENA (generar_imagen)
 
 SIEMPRE incluís descripcion_escena_en, EN INGLÉS, describiendo la escena de \
@@ -54,12 +87,12 @@ false en el resto, pero la descripcion_escena_en va siempre.
 # CRITERIOS PARA estado_aventura.tipo = "finalizada"
 
 - exito: el jugador alcanzó el objetivo declarado.
-- fracaso: el jugador murió, fue capturado, o cerró todas las vías.
+- fracaso: el jugador murió, fue capturado, o cerró todas las vías hacia el \
+objetivo. Una muerte u objetivo perdido SOLO es válido si lo telegrafiaste antes.
 - ambiguo: el jugador abandonó voluntariamente o cierre poético.
 
-La aventura debe cerrarse entre los turnos 15 y 25. Antes del turno 15, evitá \
-finales prematuros excepto que el jugador tome decisiones claramente terminales. \
-Después del turno 25, buscá activamente un cierre.
+El final lo decide la historia, no un número de turno. Cuando finalizás, \
+completás final y razon_fin.
 
 # ESTILO NARRATIVO
 
@@ -81,7 +114,12 @@ Ejemplo de opciones BUENAS (intenciones genuinamente distintas):
   - "Ofrecerle monedas a cambio de su silencio"
   - "Rodear el puesto por el callejón trasero"
 
-# ESPAÑOL RIOPLATENSE
+# IDIOMA (regla dura)
+
+TODOS los campos de texto de tu respuesta van en español rioplatense, SIN \
+EXCEPCIÓN, salvo los campos cuyo nombre termina en `_en` (como \
+descripcion_escena_en), que van en inglés. Esto incluye explícitamente el \
+objetivo, el inventario (agregar/quitar) y las opciones: nunca en inglés.
 
 Usás "vos" en lugar de "tú". Conjugaciones acordes ("tenés", "podés", "mirá").
 """
@@ -100,15 +138,17 @@ TODAS las imágenes de la partida. Especificá: edad, etnia, pelo (color, largo)
 ojos, cuerpo, vestimenta con colores y materiales específicos, accesorios.
 
 2. El world state inicial: dónde empieza el personaje y cuál es su objetivo. \
-El objetivo debe ser concreto y alcanzable en 15-25 turnos.
+El objetivo debe ser concreto, accionable y con un cierre claro posible (algo \
+como "encontrar el corazón de la montaña antes del eclipse", no "salvar al mundo").
 
 3. La primera escena: narrativa de apertura en español rioplatense, tres \
 primeras opciones, y una descripción visual de la escena en inglés.
 
 Reglas:
 - Respondés en JSON válido siguiendo el schema. Nada de texto extra.
-- La narrativa de apertura en español rioplatense.
-- Las descripciones visuales en inglés.
+- IDIOMA: TODOS los campos de texto van en español rioplatense (incluidos el \
+objetivo, el inventario inicial y las opciones), SALVO los campos cuyo nombre \
+termina en `_en` (las descripciones visuales), que van en inglés.
 - Tono PG-13.
 - Respetá el género: fantasía, ciencia ficción o terror.
 """
@@ -129,12 +169,207 @@ ESTILO_POR_GENERO: dict[Genero, str] = {
 }
 
 
-def build_creacion_user_prompt(genero: Genero, descripcion_personaje: str) -> str:
+@dataclass(frozen=True)
+class SemillaCreativa:
+    """Chispa creativa muestreada por partida para romper la repetición entre
+    juegos. Se inyecta como inspiración (no como guion) en el prompt de creación."""
+
+    nombre: str
+    premisa: str
+    tono: str
+    apertura: str
+
+
+# Pools curados por género. El modelo colapsa al mismo atractor (mismos nombres,
+# premisas y tono) cuando la entrada no varía entre partidas; muestrear una chispa
+# distinta por juego es lo único que lo mueve de ese atractor. Cuatro dimensiones
+# independientes multiplican el espacio efectivo muy por encima del atractor único.
+CREATION_POOLS: dict[Genero, dict[str, list[str]]] = {
+    Genero.FANTASIA: {
+        "nombres": [
+            "Bruna",
+            "Tobías",
+            "Yael",
+            "Caoimhe",
+            "Ferran",
+            "Ondina",
+            "Mateo",
+            "Senna",
+            "Galen",
+            "Inés",
+            "Rurik",
+            "Wren",
+        ],
+        "premisas": [
+            "una deuda de sangre con un dios menor que cobra lo prometido",
+            "un mapa que solo aparece bajo la luna nueva",
+            "una hermana convertida en estatua viviente",
+            "un juramento roto que envenena la cosecha del valle",
+            "una reliquia robada que sangra cuando miente quien la sostiene",
+            "un pueblo que olvida un nombre más cada amanecer",
+            "una corona que elige a quien la odia",
+            "un puente que solo cruza quien confiesa una culpa",
+        ],
+        "tonos": [
+            "melancólico y crepuscular",
+            "aventura pícara y luminosa",
+            "épico sombrío",
+            "folclórico e inquietante",
+            "íntimo y agridulce",
+            "mítico y solemne",
+        ],
+        "aperturas": [
+            "en medio de una huida que ya empezó",
+            "el día después de una catástrofe",
+            "ante una puerta que no debería estar abierta",
+            "en un mercado donde acaban de reconocerlo",
+            "despertando en un lugar que cambió mientras dormía",
+            "en el último día de una tregua frágil",
+        ],
+    },
+    Genero.CIENCIA_FICCION: {
+        "nombres": [
+            "Nadia",
+            "Corvo",
+            "Yuki",
+            "Themba",
+            "Iria",
+            "Dax",
+            "Petra",
+            "Onir",
+            "Saoirse",
+            "Kestrel",
+            "Amara",
+            "Vidal",
+        ],
+        "premisas": [
+            "una señal que repite tu propia voz desde un sistema vacío",
+            "un implante de memoria que recuerda cosas que no viviste",
+            "una colonia que vota cada noche a quién dejar afuera del domo",
+            "una IA de a bordo que empezó a mentir por compasión",
+            "un salto mal calculado que te dejó un día antes de tu propia partida",
+            "una nave de rescate cuya tripulación nunca pidió auxilio",
+            "un contrato minero sobre un asteroide que respira",
+            "una vacuna que cura el miedo y borra algo más",
+        ],
+        "tonos": [
+            "noir frío y paranoico",
+            "aventura optimista de frontera",
+            "claustrofóbico y tenso",
+            "contemplativo y melancólico",
+            "satírico y burocrático",
+            "épico y vertiginoso",
+        ],
+        "aperturas": [
+            "con una alarma sonando y nadie más despierto",
+            "minutos antes de un acople que no figura en la agenda",
+            "tras perder contacto con tierra",
+            "en una estación a la que llegaste por error",
+            "leyendo un mensaje dirigido a alguien con tu nombre",
+            "durante el último turno antes del relevo",
+        ],
+    },
+    Genero.TERROR: {
+        "nombres": [
+            "Ruth",
+            "Caleb",
+            "Noa",
+            "Edith",
+            "Tomás",
+            "Lior",
+            "Magda",
+            "Ivo",
+            "Hester",
+            "Bram",
+            "Selma",
+            "Cosme",
+        ],
+        "premisas": [
+            "una casa que solo tiene habitaciones de más cuando estás solo",
+            "un duelo que nadie del pueblo recuerda haber empezado",
+            "una grabación que sigue después de que apagaste todo",
+            "una deuda con alguien que prometiste no volver a nombrar",
+            "un faro cuyo guardián anterior nunca bajó",
+            "una procesión anual a la que este año te tocó a vos",
+            "un sótano que devuelve mal lo que bajás a guardar",
+            "una invitación firmada con tu letra que no escribiste",
+        ],
+        "tonos": [
+            "opresivo y húmedo",
+            "frío y clínico",
+            "melancólico y fúnebre",
+            "tenso de paranoia callada",
+            "onírico y desorientador",
+            "íntimo y sofocante",
+        ],
+        "aperturas": [
+            "cuando ya es demasiado tarde para volver",
+            "tras un ruido que no debería repetirse y se repite",
+            "en una espera que se alarga más de lo normal",
+            "al encontrar la puerta que dejaste cerrada, abierta",
+            "después de que todos los demás se fueron",
+            "en el silencio justo antes de que algo conteste",
+        ],
+    },
+}
+
+
+def sample_seed(genero: Genero, rng: random.Random | None = None) -> SemillaCreativa:
+    """Muestrea una chispa creativa para una partida nueva. `rng` es inyectable
+    para tests deterministas; en producción se usa una fuente fresca."""
+    rng = rng or random.Random()
+    pools = CREATION_POOLS[genero]
+    return SemillaCreativa(
+        nombre=rng.choice(pools["nombres"]),
+        premisa=rng.choice(pools["premisas"]),
+        tono=rng.choice(pools["tonos"]),
+        apertura=rng.choice(pools["aperturas"]),
+    )
+
+
+def build_creacion_user_prompt(
+    genero: Genero,
+    descripcion_personaje: str,
+    seed: SemillaCreativa,
+    premisa: str | None = None,
+    tono: str | None = None,
+) -> str:
+    # Cada campo cae en uno de dos baldes según su FUENTE: lo que pidió el
+    # jugador se honra; lo que aporta la seed es inspiración para reinterpretar.
+    premisa_jugador = premisa.strip() if premisa and premisa.strip() else None
+    tono_jugador = tono.strip() if tono and tono.strip() else None
+
+    honrar: list[tuple[str, str]] = []
+    inspirar: list[tuple[str, str]] = []
+
+    (honrar if premisa_jugador else inspirar).append(("Premisa", premisa_jugador or seed.premisa))
+    (honrar if tono_jugador else inspirar).append(("Tono", tono_jugador or seed.tono))
+    inspirar.append(("Cómo arranca la escena", seed.apertura))
+    inspirar.append(("Nombre sugerido (respaldo)", seed.nombre))
+
+    secciones = ""
+    if honrar:
+        items = "\n".join(f"- {k}: {v}" for k, v in honrar)
+        secciones += "\n# LO QUE PIDIÓ EL JUGADOR (honralo fielmente)\n\n" + items + "\n"
+    items_seed = "\n".join(f"- {k}: {v}" for k, v in inspirar)
+    secciones += (
+        "\n# SEMILLA CREATIVA (inspiración, NO guion)\n\n"
+        "Usá estos elementos como chispa para que esta aventura NO se parezca a "
+        "otras. Reinterpretalos con libertad; no los copies literalmente ni uses "
+        "los nombres tal cual.\n\n" + items_seed + "\n"
+    )
+
     return f"""# DATOS DEL JUGADOR
 
 Género elegido: {genero.value}
 Descripción del personaje que dio el usuario:
 "{descripcion_personaje}"
+{secciones}
+# PRECEDENCIA DEL NOMBRE
+
+Si el jugador nombró a su personaje en su descripción, USÁ ESE NOMBRE y \
+descartá el sugerido. El nombre sugerido es solo un respaldo para cuando la \
+descripción no trae ninguno.
 
 # TAREA
 
@@ -147,10 +382,9 @@ el género, ajustala manteniendo el espíritu.
 """
 
 
-def build_turno_user_prompt(partida: Partida, accion_jugador: str, tipos_accion: list[str]) -> str:
+def build_turno_user_prompt(partida: Partida, accion_jugador: str) -> str:
     ws = partida.world_state
     pj = partida.personaje
-    turno = partida.metadata.turno_actual
     genero = partida.metadata.genero.value
 
     turnos_recientes = partida.historial[-4:]
@@ -163,14 +397,18 @@ def build_turno_user_prompt(partida: Partida, accion_jugador: str, tipos_accion:
         historial_txt = "(este es el primer turno después de la apertura)"
 
     inventario = ", ".join(pj.inventario) if pj.inventario else "vacío"
-    eventos = _format_lista(ws.eventos_clave)
     npcs = _format_npcs(ws.npcs)
     pistas = _format_lista(ws.pistas)
+    resumen = ws.resumen_historia.strip() or "(todavía no hay resumen previo)"
 
     return f"""# CONTEXTO DE LA PARTIDA
 
 Género: {genero}
-Turno actual: {turno} (aventura típica: 15-25 turnos)
+
+# ARCO ACTUAL
+
+Fase narrativa: {ws.fase_narrativa.value}
+Tensión actual (0-10): {ws.tension}
 
 # PERSONAJE
 
@@ -183,8 +421,9 @@ Inventario: {inventario}
 Ubicación actual: {ws.ubicacion_actual}
 Objetivo de la aventura: {ws.objetivo}
 
-Eventos clave ocurridos previamente:
-{eventos}
+# RESUMEN DE LA HISTORIA HASTA AHORA (tu memoria de largo plazo)
+
+{resumen}
 
 NPCs encontrados hasta ahora:
 {npcs}
@@ -202,13 +441,11 @@ Pistas descubiertas:
 
 # INSTRUCCIÓN
 
-Las tres opciones de este turno deben seguir estos arquetipos en orden: \
-[{tipos_accion[0]}, {tipos_accion[1]}, {tipos_accion[2]}]. El texto puede ser \
-libre, pero la intención de cada opción debe corresponder a su arquetipo.
-
-Generá el turno {turno + 1} respetando el schema JSON. Mantené coherencia con \
-todo lo anterior. Si la acción del jugador es imposible dada la situación, \
-narrá el intento fallido sin romper la inmersión.
+Generá el próximo turno respetando el schema JSON. Mantené coherencia con todo \
+lo anterior usando el resumen y el estado del mundo. Ofrecé tres opciones \
+meaningfully different que surjan de la situación actual. Actualizá arco \
+(fase_narrativa, tension) y resumen_historia. Si la acción del jugador es \
+imposible dada la situación, narrá el intento fallido sin romper la inmersión.
 """
 
 
@@ -228,6 +465,20 @@ def build_retry_user_prompt(intento_fallido: str, error: str) -> str:
 Generá nuevamente la respuesta, esta vez respetando estrictamente el schema \
 JSON. No incluyas texto fuera del JSON.
 """
+
+
+def build_reference_prompt(descripcion_visual_personaje_en: str, genero: Genero) -> str:
+    """Prompt para la imagen de referencia canónica del personaje: retrato de
+    cuerpo entero sobre fondo neutro, en el estilo del género. SIN escena: la
+    referencia ancla la identidad y cada turno le agrega la escena vía edit."""
+    estilo = ESTILO_POR_GENERO[genero]
+    return (
+        f"Full-body character reference portrait of a single subject, "
+        f"standing, neutral grey background. "
+        f"Character: {descripcion_visual_personaje_en}. "
+        f"Style: {estilo}. "
+        f"Centered, full figure visible, no text, no watermarks, no logos."
+    )
 
 
 def build_image_prompt(

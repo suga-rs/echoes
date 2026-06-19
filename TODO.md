@@ -17,6 +17,5 @@
 ## Storytelling
 
 - [ ] ¿Como podría narrar el modelo LLM historias mas interesantes?
-- [ ] Tratar de que el modelo LLM cierre la historia en su limite de MAX_TURNOS_POR_PARTIDA.
 - [ ] Objetivo e Items en el Inventario están en ingles.
 - [ ] Incluir RAG en la arquitectura para mejorar la coherencia del modelo y optimizar uso de tokens.

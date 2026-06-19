@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader } from "@/components/ui/loader";
+import { EliminarPartidaButton } from "@/components/eliminar-partida-button";
 import { formatFechaHora } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
 
@@ -108,15 +109,22 @@ export function PartidasList({ onReanudar }: PartidasListProps) {
                   </span>
                   <span>•</span>
                   <span>Turno {partida.turno_actual}</span>
+                  <span>•</span>
+                  <span title="Versión del contrato de prompts con que se creó">
+                    v{partida.prompt_version}
+                  </span>
                 </div>
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => onReanudar(partida.codigo_partida)}
-              >
-                Reanudar
-              </Button>
+              <div className="flex shrink-0 items-center gap-3">
+                <EliminarPartidaButton codigo={partida.codigo_partida} />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onReanudar(partida.codigo_partida)}
+                >
+                  Reanudar
+                </Button>
+              </div>
             </li>
           ))}
         </ul>

@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Loader } from "@/components/ui/loader";
+import { EliminarPartidaButton } from "@/components/eliminar-partida-button";
 import {
   Sheet,
   SheetContent,
@@ -98,16 +99,19 @@ export function PartidaSidebar({
                           {partida.codigo_partida.slice(0, 9)}
                         </span>
                       </div>
-                      {!esActiva && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-xs"
-                          onClick={() => handleReanudar(partida.codigo_partida)}
-                        >
-                          Reanudar
-                        </Button>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <EliminarPartidaButton codigo={partida.codigo_partida} />
+                        {!esActiva && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            onClick={() => handleReanudar(partida.codigo_partida)}
+                          >
+                            Reanudar
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </li>
                 );

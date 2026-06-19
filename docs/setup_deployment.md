@@ -18,11 +18,11 @@ GitHub Repo
 
 **Recursos nuevos que crea esta guía:**
 
-| Recurso | Nombre | SKU | Costo ~mensual |
-|---|---|---|---|
-| Container Apps Environment | `cae-ata` | Consumption | pay-per-use |
-| Container App (backend) | `ca-backend-ia-aplicada` | min=0 réplicas | ~$0 idle |
-| Static Web App (frontend) | `swa-ata` | Free | $0 |
+| Recurso                    | Nombre                   | SKU            | Costo ~mensual |
+| -------------------------- | ------------------------ | -------------- | -------------- |
+| Container Apps Environment | `cae-ata`                | Consumption    | pay-per-use    |
+| Container App (backend)    | `ca-backend-ia-aplicada` | min=0 réplicas | ~$0 idle       |
+| Static Web App (frontend)  | `swa-ata`                | Free           | $0             |
 
 > **¿Por qué no ACR?** GitHub Container Registry (GHCR) cumple el mismo rol de forma gratuita y sin necesidad de permisos especiales en Azure. El workflow de GitHub Actions construye y sube la imagen automáticamente en cada push.
 
@@ -54,10 +54,10 @@ $APPI_CONN        = "<connection_string_de_appi-ata>"  # desde setup_azure.md pa
 
 El repositorio necesita estos secrets (Settings → Secrets and variables → Actions):
 
-| Secret | Quién lo usa | Valor |
-|---|---|---|
-| `AZURE_STATIC_WEB_APPS_API_TOKEN_POLITE_PEBBLE_023B85A0F` | Workflow SWA | Token generado por Azure al crear el SWA |
-| `BACKEND_URL` | Workflow SWA | URL completa del Container App, ej: `https://ca-backend-ia-aplicada.xxx.eastus2.azurecontainerapps.io` |
+| Secret                                                    | Quién lo usa | Valor                                                                                                  |
+| --------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------ |
+| `AZURE_STATIC_WEB_APPS_API_TOKEN_POLITE_PEBBLE_023B85A0F` | Workflow SWA | Token generado por Azure al crear el SWA                                                               |
+| `BACKEND_URL`                                             | Workflow SWA | URL completa del Container App, ej: `https://ca-backend-ia-aplicada.xxx.eastus2.azurecontainerapps.io` |
 
 > `GITHUB_TOKEN` es automático — no hay que configurarlo. El backend workflow no necesita ninguna credencial de Azure: solo hace push a GHCR.
 
@@ -87,6 +87,7 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--worker
 ```
 
 Notas:
+
 - El venv se copia completo al runtime stage — evita conflictos con el Python del sistema.
 - `--workers 1` es intencional: Container Apps escala con réplicas, no con procesos worker. Múltiples workers romperían el `@lru_cache` de `get_settings()`.
 
@@ -200,7 +201,6 @@ az containerapp create `
     "STORAGE_CONNECTION_STRING=" `
     "APPLICATIONINSIGHTS_CONNECTION_STRING=${APPI_CONN}" `
     "LOG_LEVEL=INFO" `
-    "MAX_TURNOS_POR_PARTIDA=25" `
     "MAX_IMAGENES_POR_PARTIDA=25" `
     "CORS_ORIGINS=http://localhost:3000"
 
@@ -269,10 +269,12 @@ az role assignment create `
 
 ```js
 const nextConfig = {
-  output: 'export',
+  output: "export",
   reactStrictMode: true,
   images: {
-    remotePatterns: [{ protocol: "https", hostname: "*.blob.core.windows.net" }],
+    remotePatterns: [
+      { protocol: "https", hostname: "*.blob.core.windows.net" },
+    ],
     unoptimized: true,
   },
 };
@@ -374,6 +376,7 @@ az containerapp revision list `
 ```
 
 Test end-to-end manual:
+
 1. Iniciar una partida desde el frontend — verifica Foundry via Managed Identity.
 2. Refrescar la página — verifica que el estado persiste (Cosmos DB via Managed Identity).
 3. Avanzar hasta que se genere una imagen — verifica que la URL apunta a `stataimgsXYZ.blob.core.windows.net` y carga.
@@ -435,6 +438,7 @@ az containerapp show --name $CA_NAME --resource-group $RG `
 ### El frontend carga pero las llamadas al backend dan error de CORS
 
 Verificar que `CORS_ORIGINS` en el Container App incluye el dominio exacto del SWA:
+
 - Con `https://` al principio
 - Sin trailing slash al final
 - Formato: `<nombre>.azurestaticapps.net`

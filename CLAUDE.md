@@ -98,7 +98,6 @@ src/components/ui/           →  Primitive UI (Button, Dialog, Input — Radix 
 | `JWT_SECRET` | Secret used to sign login JWTs. **Must** be a long random value in production. |
 | `JWT_ALGORITHM` | JWT signing algorithm. Default `HS256`. |
 | `JWT_EXPIRE_MINUTES` | Access-token lifetime in minutes. Default 10080 (7 days). |
-| `MAX_TURNOS_POR_PARTIDA` | Default 25 |
 | `MAX_IMAGENES_POR_PARTIDA` | Cap on images per game. Default 25. Images are generated on demand (per-turn button) plus the first and last turn automatically. |
 
 Copy `backend/.env.example` → `backend/.env` and `frontend/.env.local.example` → `frontend/.env.local` to configure locally.

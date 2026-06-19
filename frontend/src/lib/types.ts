@@ -91,6 +91,7 @@ export interface PartidaResumen {
   genero: Genero;
   creada_en: string;
   actualizada_en?: string | null;
+  prompt_version: string;
 }
 
 export interface RandomDescriptionResponse {

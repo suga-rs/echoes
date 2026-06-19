@@ -21,11 +21,6 @@ class PartidaFinalizadaError(AppError):
     code = "partida_finalizada"
 
 
-class LimiteTurnosExcedidoError(AppError):
-    status_code = 409
-    code = "limite_turnos_excedido"
-
-
 class LimiteImagenesExcedidoError(AppError):
     status_code = 409
     code = "limite_imagenes_excedido"
@@ -59,3 +54,8 @@ class CredencialesInvalidasError(AppError):
 class NoAutenticadoError(AppError):
     status_code = 401
     code = "no_autenticado"
+
+
+class AccesoDenegadoError(AppError):
+    status_code = 403
+    code = "acceso_denegado"

@@ -3,7 +3,6 @@
 import asyncio
 import contextlib
 import json
-import random
 import secrets
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
@@ -15,9 +14,9 @@ from pydantic import BaseModel
 from app.core import telemetry
 from app.core.config import Settings, get_settings
 from app.core.exceptions import (
+    AccesoDenegadoError,
     FoundryError,
     LimiteImagenesExcedidoError,
-    LimiteTurnosExcedidoError,
     PartidaFinalizadaError,
     PartidaNoEncontradaError,
     RespuestaLLMInvalidaError,
@@ -27,6 +26,7 @@ from app.models.domain import (
     NPC,
     Actitud,
     EstadoPartida,
+    FaseNarrativa,
     Genero,
     MetadataPartida,
     Partida,
@@ -53,20 +53,15 @@ from app.services.prompts import (
     SYSTEM_PROMPT_TURNO,
     build_creacion_user_prompt,
     build_image_prompt,
+    build_reference_prompt,
     build_retry_user_prompt,
     build_turno_user_prompt,
+    sample_seed,
 )
 
 logger = get_logger("service.partidas")
 
 _PydanticT = TypeVar("_PydanticT", bound=BaseModel)
-
-_TIPOS_ACCION: dict[str, list[str]] = {
-    "confrontacion": ["confrontar directamente", "engañar", "intimidar"],
-    "social": ["negociar", "ayudar al NPC", "espiar"],
-    "exploracion": ["inspeccionar el entorno", "buscar otra ruta"],
-    "recursos": ["usar un objeto del inventario", "improvisar con lo disponible"],
-}
 
 
 class PartidaService:
@@ -84,13 +79,21 @@ class PartidaService:
 
     @telemetry.traced("crear_partida")
     def crear_partida(
-        self, genero: Genero, descripcion_personaje: str, owner_id: str = "0"
+        self,
+        genero: Genero,
+        descripcion_personaje: str,
+        owner_id: str = "0",
+        premisa: str | None = None,
+        tono: str | None = None,
     ) -> StartResponse:
         telemetry.add_span_attributes(genero=genero.value, prompt_version=PROMPT_VERSION)
         logger.info("Creando partida: genero=%s, prompt_version=%s", genero.value, PROMPT_VERSION)
 
         system = SYSTEM_PROMPT_CREACION
-        user = build_creacion_user_prompt(genero, descripcion_personaje)
+        seed = sample_seed(genero)
+        user = build_creacion_user_prompt(
+            genero, descripcion_personaje, seed, premisa=premisa, tono=tono
+        )
         creacion = self._invocar_llm_con_reintento(
             system, user, CREACION_JSON_SCHEMA, CreacionLLMResponse
         )
@@ -114,15 +117,18 @@ class PartidaService:
             estado=EstadoPartida.EN_CURSO,
             prompt_version=PROMPT_VERSION,
             user_id=owner_id,
+            # Las partidas nuevas anclan sus imágenes a la referencia del personaje.
+            usa_referencia_visual=True,
         )
 
         imagen_url = self._generar_imagen_segura(
             codigo_partida=codigo,
             turno=1,
-            descripcion_visual_personaje_en=personaje.descripcion_visual_en,
+            personaje=personaje,
             descripcion_escena_en=creacion.primera_escena.descripcion_imagen_en,
             genero=genero,
             imagenes_previas=0,
+            usa_referencia=metadata.usa_referencia_visual,
         )
 
         primer_turno = TurnoHistorial(
@@ -176,11 +182,6 @@ class PartidaService:
                 detalles={"final": partida.metadata.final},
             )
 
-        if partida.metadata.turno_actual >= self.settings.max_turnos_por_partida:
-            raise LimiteTurnosExcedidoError(
-                f"La partida alcanzó el máximo de {self.settings.max_turnos_por_partida} turnos"
-            )
-
         logger.info(
             "Avanzando turno: codigo=%s, turno_actual=%s, prompt_version=%s",
             codigo_partida,
@@ -189,8 +190,7 @@ class PartidaService:
         )
 
         system = SYSTEM_PROMPT_TURNO
-        tipos_accion = self._seleccionar_tipos_accion(partida)
-        user = build_turno_user_prompt(partida, accion, tipos_accion)
+        user = build_turno_user_prompt(partida, accion)
         turno_llm = self._invocar_llm_con_reintento(
             system, user, TURNO_JSON_SCHEMA, TurnoLLMResponse
         )
@@ -207,10 +207,11 @@ class PartidaService:
             imagen_url = self._generar_imagen_segura(
                 codigo_partida=codigo_partida,
                 turno=nuevo_turno_num,
-                descripcion_visual_personaje_en=partida.personaje.descripcion_visual_en,
+                personaje=partida.personaje,
                 descripcion_escena_en=descripcion_escena,
                 genero=partida.metadata.genero,
                 imagenes_previas=partida.metadata.imagenes_generadas,
+                usa_referencia=partida.metadata.usa_referencia_visual,
             )
             if imagen_url:
                 partida.metadata.imagenes_generadas += 1
@@ -271,6 +272,27 @@ class PartidaService:
 
     def listar_partidas(self, user_id: str | None = None) -> list[PartidaResumen]:
         return self.partidas.list_all(user_id=user_id)
+
+    @telemetry.traced("eliminar_partida")
+    def eliminar_partida(self, codigo_partida: str, user_id: str) -> None:
+        """Elimina una partida del usuario que la posee. Rechaza el bucket
+        compartido del Creator ("0") y a quien no sea el dueño. Limpia los blobs
+        de imagen (best-effort) antes de borrar el documento, que es el resultado
+        autoritativo de la operación."""
+        partida = self.partidas.get(codigo_partida)  # 404 si no existe
+        owner = partida.metadata.user_id
+        if owner == "0":
+            raise AccesoDenegadoError("Las partidas del Creator no se pueden eliminar")
+        if owner != user_id:
+            raise AccesoDenegadoError("No podés eliminar una partida que no es tuya")
+
+        try:
+            self.imagenes.eliminar_imagenes(codigo_partida)
+        except Exception:
+            logger.exception("Falló la limpieza de imágenes de %s", codigo_partida)
+
+        self.partidas.delete(codigo_partida)
+        logger.info("Partida eliminada: codigo=%s, user_id=%s", codigo_partida, user_id)
 
     def generar_descripcion_aleatoria(self, genero: Genero) -> str:
         system = (
@@ -383,15 +405,24 @@ class PartidaService:
         if upd.pista_descubierta:
             ws.pistas.append(upd.pista_descubierta)
 
+        # Arco narrativo y memoria rodante: reemplazan al conteo de turnos como
+        # reloj dramático y como contexto de coherencia en partidas largas.
+        with contextlib.suppress(ValueError):
+            ws.fase_narrativa = FaseNarrativa(turno_llm.arco.fase_narrativa)
+        ws.tension = max(0, min(10, turno_llm.arco.tension))
+        if turno_llm.resumen_historia:
+            ws.resumen_historia = turno_llm.resumen_historia
+
     def _generar_imagen_segura(
         self,
         *,
         codigo_partida: str,
         turno: int,
-        descripcion_visual_personaje_en: str,
+        personaje: Personaje,
         descripcion_escena_en: str,
         genero: Genero,
         imagenes_previas: int,
+        usa_referencia: bool,
     ) -> str | None:
         if imagenes_previas >= self.settings.max_imagenes_por_partida:
             logger.info("Límite de imágenes alcanzado")
@@ -399,12 +430,46 @@ class PartidaService:
 
         try:
             prompt = build_image_prompt(
-                descripcion_visual_personaje_en, descripcion_escena_en, genero
+                personaje.descripcion_visual_en, descripcion_escena_en, genero
             )
-            png = self.foundry.generar_imagen(prompt)
+            # Flujo nuevo: anclar la escena a la referencia canónica del personaje
+            # vía images.edit. Si la referencia falla, degradamos a imagen por
+            # texto para igual renderizar algo (el turno no se rompe).
+            ref_bytes = (
+                self._asegurar_referencia_visual(codigo_partida, personaje, genero)
+                if usa_referencia
+                else None
+            )
+            if ref_bytes is not None:
+                png = self.foundry.editar_imagen(prompt, ref_bytes)
+            else:
+                png = self.foundry.generar_imagen(prompt)
             return self.imagenes.subir_imagen(codigo_partida, turno, png)
         except Exception:
             logger.exception("Falló generación de imagen para %s", codigo_partida)
+            return None
+
+    def _asegurar_referencia_visual(
+        self, codigo_partida: str, personaje: Personaje, genero: Genero
+    ) -> bytes | None:
+        """Garantiza la referencia visual canónica del personaje y devuelve sus
+        bytes. Se genera una sola vez (memoizada en personaje.referencia_visual_url)
+        y NO cuenta contra el cupo de imágenes. Devuelve None si la generación o
+        descarga falla; el llamador degrada entonces a imagen por texto."""
+        if personaje.referencia_visual_url:
+            try:
+                return self.imagenes.descargar_imagen(personaje.referencia_visual_url)
+            except Exception:
+                logger.exception("No se pudo descargar la referencia visual de %s", codigo_partida)
+                return None
+
+        try:
+            prompt = build_reference_prompt(personaje.descripcion_visual_en, genero)
+            png = self.foundry.generar_imagen(prompt)
+            personaje.referencia_visual_url = self.imagenes.subir_referencia(codigo_partida, png)
+            return png
+        except Exception:
+            logger.exception("Falló la generación de la referencia visual de %s", codigo_partida)
             return None
 
     def generar_imagen_turno(self, codigo_partida: str, turno_num: int) -> str:
@@ -435,10 +500,11 @@ class PartidaService:
         imagen_url = self._generar_imagen_segura(
             codigo_partida=codigo_partida,
             turno=turno_num,
-            descripcion_visual_personaje_en=partida.personaje.descripcion_visual_en,
+            personaje=partida.personaje,
             descripcion_escena_en=turno.descripcion_escena_en,
             genero=partida.metadata.genero,
             imagenes_previas=partida.metadata.imagenes_generadas,
+            usa_referencia=partida.metadata.usa_referencia_visual,
         )
         if not imagen_url:
             raise FoundryError("Falló la generación de la imagen")
@@ -473,10 +539,6 @@ class PartidaService:
                 f"La partida {codigo_partida} ya terminó",
                 detalles={"final": partida.metadata.final},
             )
-        if partida.metadata.turno_actual >= self.settings.max_turnos_por_partida:
-            raise LimiteTurnosExcedidoError(
-                f"La partida alcanzó el máximo de {self.settings.max_turnos_por_partida} turnos"
-            )
 
         logger.info(
             "Avanzando turno (stream): codigo=%s, turno_actual=%s, prompt_version=%s",
@@ -489,8 +551,7 @@ class PartidaService:
             f"{SYSTEM_PROMPT_TURNO}\n\n# SCHEMA JSON ESPERADO\n"
             f"{json.dumps(TURNO_JSON_SCHEMA, indent=2)}"
         )
-        tipos_accion = self._seleccionar_tipos_accion(partida)
-        user = build_turno_user_prompt(partida, accion, tipos_accion)
+        user = build_turno_user_prompt(partida, accion)
 
         extractor = _NarrativaExtractor()
         accumulated = ""
@@ -571,10 +632,11 @@ class PartidaService:
                 self._generar_imagen_segura,
                 codigo_partida=codigo_partida,
                 turno=nuevo_turno_num,
-                descripcion_visual_personaje_en=partida.personaje.descripcion_visual_en,
+                personaje=partida.personaje,
                 descripcion_escena_en=turno_llm.generar_imagen.descripcion_escena_en,
                 genero=partida.metadata.genero,
                 imagenes_previas=partida.metadata.imagenes_generadas,
+                usa_referencia=partida.metadata.usa_referencia_visual,
             )
             if imagen_url:
                 partida.metadata.imagenes_generadas += 1
@@ -589,24 +651,6 @@ class PartidaService:
         alphabet = "abcdefghijkmnpqrstuvwxyz23456789"
         groups = ["".join(secrets.choice(alphabet) for _ in range(4)) for _ in range(3)]
         return "-".join(groups)
-
-    def _seleccionar_tipos_accion(self, partida: Partida) -> list[str]:
-        seed = sum(ord(c) for c in partida.codigo_partida) + partida.metadata.turno_actual * 1000
-        rng = random.Random(seed)
-
-        prioritarias = []
-        if partida.world_state.npcs:
-            prioritarias.append("social")
-        if partida.personaje.inventario:
-            prioritarias.append("recursos")
-
-        restantes = [c for c in _TIPOS_ACCION if c not in prioritarias]
-        rng.shuffle(restantes)
-
-        seleccionadas = (prioritarias + restantes)[:3]
-        rng.shuffle(seleccionadas)
-
-        return [rng.choice(_TIPOS_ACCION[cat]) for cat in seleccionadas]
 
 
 class _NarrativaExtractor:

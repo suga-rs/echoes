@@ -89,7 +89,7 @@ export function Acciones({ opciones }: AccionesProps) {
           <Button
             key={idx}
             variant="outline"
-            className="justify-start text-left h-auto py-3 whitespace-normal"
+            className="fuente-narrativa justify-start text-left h-auto py-3 whitespace-normal"
             onClick={() => void enviarAccion(opcion)}
           >
             <span className="text-muted-foreground mr-3">{idx + 1}.</span>

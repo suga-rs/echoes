@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Dice5 } from "lucide-react";
+import { ChevronDown, Dice5 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader } from "@/components/ui/loader";
 import { api, ApiClientError } from "@/lib/api";
@@ -33,11 +34,23 @@ const GENEROS: { value: Genero; label: string; emoji: string; descripcion: strin
 export function InicioDialog({ open, onOpenChange }: InicioDialogProps) {
   const [genero, setGenero] = useState<Genero | null>(null);
   const [descripcion, setDescripcion] = useState("");
+  const [premisa, setPremisa] = useState("");
+  const [tono, setTono] = useState("");
+  const [avanzadasAbierto, setAvanzadasAbierto] = useState(false);
   const iniciarPartida = usePartidaStore((s) => s.iniciarPartida);
 
   const mutation = useMutation({
-    mutationFn: ({ genero, descripcion }: { genero: Genero; descripcion: string }) =>
-      api.iniciarPartida(genero, descripcion),
+    mutationFn: ({
+      genero,
+      descripcion,
+      premisa,
+      tono,
+    }: {
+      genero: Genero;
+      descripcion: string;
+      premisa: string;
+      tono: string;
+    }) => api.iniciarPartida(genero, descripcion, premisa, tono),
     onSuccess: (data) => {
       iniciarPartida({
         codigo: data.codigo_partida,
@@ -54,6 +67,9 @@ export function InicioDialog({ open, onOpenChange }: InicioDialogProps) {
       onOpenChange(false);
       setGenero(null);
       setDescripcion("");
+      setPremisa("");
+      setTono("");
+      setAvanzadasAbierto(false);
     },
   });
 
@@ -138,6 +154,56 @@ export function InicioDialog({ open, onOpenChange }: InicioDialogProps) {
             </p>
           </div>
 
+          <div className="grid gap-2">
+            <button
+              type="button"
+              onClick={() => setAvanzadasAbierto((v) => !v)}
+              disabled={mutation.isPending}
+              aria-expanded={avanzadasAbierto}
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ChevronDown
+                className={`h-4 w-4 transition-transform ${avanzadasAbierto ? "rotate-180" : ""}`}
+              />
+              Opciones avanzadas (opcional)
+            </button>
+
+            {avanzadasAbierto && (
+              <div className="grid gap-4 pl-1">
+                <div className="grid gap-2">
+                  <Label htmlFor="premisa">Premisa</Label>
+                  <Textarea
+                    id="premisa"
+                    placeholder="Ej: vengar a su maestro asesinado por la orden..."
+                    value={premisa}
+                    onChange={(e) => setPremisa(e.target.value)}
+                    disabled={mutation.isPending}
+                    maxLength={200}
+                    rows={2}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {premisa.length}/200 — el conflicto central. Si lo dejás vacío, la IA propone uno.
+                  </p>
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="tono">Tono</Label>
+                  <Input
+                    id="tono"
+                    placeholder="Ej: épico sombrío, melancólico, opresivo..."
+                    value={tono}
+                    onChange={(e) => setTono(e.target.value)}
+                    disabled={mutation.isPending}
+                    maxLength={100}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {tono.length}/100 — el clima de la historia. Si lo dejás vacío, la IA elige.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
           {mutation.isError && (
             <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
               {mutation.error instanceof ApiClientError
@@ -149,10 +215,10 @@ export function InicioDialog({ open, onOpenChange }: InicioDialogProps) {
 
         <DialogFooter>
           {mutation.isPending ? (
-            <Loader message="Generando tu aventura..." />
+            <Loader message="Creando tu personaje y la primera escena…" />
           ) : (
             <Button
-              onClick={() => genero && mutation.mutate({ genero, descripcion })}
+              onClick={() => genero && mutation.mutate({ genero, descripcion, premisa, tono })}
               disabled={!puedeEnviar}
             >
               Comenzar aventura

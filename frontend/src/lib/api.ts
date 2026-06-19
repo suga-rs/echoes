@@ -65,6 +65,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       detail?.detalles || {},
     );
   }
+  // 204 No Content (p. ej. DELETE) no trae cuerpo que parsear.
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
@@ -154,10 +156,20 @@ export async function avanzarTurnoStream(
 }
 
 export const api = {
-  iniciarPartida: (genero: Genero, descripcion_personaje: string) =>
+  iniciarPartida: (
+    genero: Genero,
+    descripcion_personaje: string,
+    premisa?: string | null,
+    tono?: string | null,
+  ) =>
     request<StartResponse>("/api/partidas/start", {
       method: "POST",
-      body: JSON.stringify({ genero, descripcion_personaje }),
+      body: JSON.stringify({
+        genero,
+        descripcion_personaje,
+        premisa: premisa || null,
+        tono: tono || null,
+      }),
     }),
 
   avanzarTurno: (codigo: string, accion: string) =>
@@ -185,6 +197,9 @@ export const api = {
 
   listarPartidas: () =>
     request<PartidaResumen[]>("/api/partidas"),
+
+  eliminarPartida: (codigo: string) =>
+    request<void>(`/api/partidas/${codigo}`, { method: "DELETE" }),
 
   generarDescripcionAleatoria: (genero: Genero) =>
     request<RandomDescriptionResponse>("/api/partidas/random-description", {

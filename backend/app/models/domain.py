@@ -3,7 +3,7 @@
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class Genero(StrEnum):
@@ -29,11 +29,23 @@ class TipoFinal(StrEnum):
     AMBIGUO = "ambiguo"
 
 
+class FaseNarrativa(StrEnum):
+    INTRODUCCION = "introduccion"
+    DESARROLLO = "desarrollo"
+    CLIMAX = "climax"
+    RESOLUCION = "resolucion"
+
+
 class Personaje(BaseModel):
     nombre: str
     descripcion_narrativa: str
     descripcion_visual_en: str
     inventario: list[str] = Field(default_factory=list)
+    # URL de la imagen de referencia canónica del personaje (retrato de cuerpo
+    # entero, fondo neutro). Se genera una sola vez por partida y se reutiliza
+    # como ancla visual en cada imagen de escena vía images.edit. None hasta que
+    # se genera la primera imagen; partidas previas deserializan como None.
+    referencia_visual_url: str | None = None
 
 
 class NPC(BaseModel):
@@ -48,6 +60,14 @@ class WorldState(BaseModel):
     eventos_clave: list[str] = Field(default_factory=list)
     npcs: list[NPC] = Field(default_factory=list)
     pistas: list[str] = Field(default_factory=list)
+    # Arco narrativo: reemplaza al conteo de turnos como reloj dramático.
+    # Partidas previas a este cambio (Cosmos schemaless) deserializan con
+    # estos defaults seguros.
+    fase_narrativa: FaseNarrativa = FaseNarrativa.INTRODUCCION
+    tension: int = 1
+    # Resumen acumulado de la historia que el narrador reescribe cada turno;
+    # mantiene la coherencia en partidas largas sin reinyectar todo el historial.
+    resumen_historia: str = ""
 
 
 class TurnoHistorial(BaseModel):
@@ -75,6 +95,10 @@ class MetadataPartida(BaseModel):
     # Versión de prompts/contrato con la que se creó la partida (auditoría).
     # Las partidas previas sin el campo deserializan como None (Cosmos schemaless).
     prompt_version: str | None = None
+    # Gate de "solo partidas nuevas" para el flujo de referencia visual del
+    # personaje. Lo activa crear_partida; las partidas previas deserializan como
+    # False y siguen en el flujo de imagen por texto (images.generate).
+    usa_referencia_visual: bool = False
 
 
 class Partida(BaseModel):
@@ -92,6 +116,10 @@ class Partida(BaseModel):
 class StartPartidaRequest(BaseModel):
     genero: Genero
     descripcion_personaje: str = Field(..., min_length=10, max_length=300)
+    # Inputs creativos opcionales del jugador. Si se dan, el narrador los honra;
+    # si no, los cubre la semilla muestreada server-side.
+    premisa: str | None = Field(default=None, max_length=200)
+    tono: str | None = Field(default=None, max_length=100)
 
 
 class TurnoRequest(BaseModel):
@@ -153,6 +181,14 @@ class PartidaResumen(BaseModel):
     genero: Genero
     creada_en: datetime
     actualizada_en: datetime | None = None
+    # Versión del contrato de prompts con que se creó. Las partidas previas sin
+    # el campo (Cosmos schemaless) se presentan como la versión inicial.
+    prompt_version: str = "1.0.0"
+
+    @field_validator("prompt_version", mode="before")
+    @classmethod
+    def _normalizar_prompt_version(cls, v: str | None) -> str:
+        return v or "1.0.0"
 
 
 class RandomDescriptionRequest(BaseModel):

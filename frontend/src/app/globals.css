@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600;700&display=swap");
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -21,6 +21,9 @@
     --destructive: 0 70% 45%;
     --destructive-foreground: 0 0% 98%;
     --radius: 0.5rem;
+    /* Preferencias de lectura del narrador (configurables; defaults = look actual). */
+    --font-narrativa: "Crimson Text", Georgia, serif;
+    --narrativa-size: 1.05rem;
   }
 
   .dark {
@@ -52,7 +55,13 @@
 }
 
 .narrativa {
-  font-family: theme("fontFamily.serif");
-  font-size: 1.05rem;
+  font-family: var(--font-narrativa);
+  font-size: var(--narrativa-size);
   line-height: 1.7;
+}
+
+/* Solo comparte la familia con el narrador (no el tamaño): acciones, opciones,
+   inventario, objetivo y descripción del personaje. */
+.fuente-narrativa {
+  font-family: var(--font-narrativa);
 }
