@@ -43,6 +43,14 @@ class PartidaRepository:
         self._container.upsert_item(doc)
         return partida
 
+    def delete(self, codigo_partida: str) -> None:
+        try:
+            self._container.delete_item(item=codigo_partida, partition_key=codigo_partida)
+        except exceptions.CosmosResourceNotFoundError as e:
+            raise PartidaNoEncontradaError(
+                f"No existe partida con código '{codigo_partida}'"
+            ) from e
+
     def list_all(self, user_id: str | None = None) -> list[PartidaResumen]:
         """Lista partidas. Si se pasa `user_id`, filtra por dueño; las partidas
         previas sin el campo se tratan como del usuario "0" (Creator)."""

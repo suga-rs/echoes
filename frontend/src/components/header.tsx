@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
-import { Copy, Plus, Package, PanelLeft, Home, LogIn, LogOut, User } from "lucide-react";
+import { Copy, Plus, Package, PanelLeft, Home, LogIn, LogOut, User, Settings, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,10 +12,17 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { usePartidaStore } from "@/store/partida-store";
 import { useAuthStore } from "@/store/auth-store";
 import { AuthModal } from "./auth-modal";
-import { ThemeToggle } from "./theme-toggle";
+import { SettingsSheet } from "./settings-sheet";
 
 interface HeaderProps {
   onNuevaPartida: () => void;
@@ -26,6 +33,7 @@ interface HeaderProps {
 export function Header({ onNuevaPartida, onToggleSidebar, onVolverAlInicio }: HeaderProps) {
   const [showInventario, setShowInventario] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [copiado, setCopiado] = useState(false);
   const codigo = usePartidaStore((s) => s.codigoPartida);
   const objetivo = usePartidaStore((s) => s.objetivo);
@@ -67,7 +75,7 @@ export function Header({ onNuevaPartida, onToggleSidebar, onVolverAlInicio }: He
               <div className="text-xs text-muted-foreground uppercase tracking-wide">
                 Objetivo
               </div>
-              <div className="text-sm font-medium truncate">{objetivo}</div>
+              <div className="fuente-narrativa text-sm font-medium truncate">{objetivo}</div>
             </>
           ) : (
             <div className="text-sm font-semibold">Echoes</div>
@@ -100,9 +108,9 @@ export function Header({ onNuevaPartida, onToggleSidebar, onVolverAlInicio }: He
         )}
 
         {user ? (
-          <>
-            <Button variant="ghost" size="sm" asChild title="Mi perfil">
-              <Link href="/perfil" className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" title="Menú de usuario">
                 {user.avatar_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -113,31 +121,49 @@ export function Header({ onNuevaPartida, onToggleSidebar, onVolverAlInicio }: He
                 ) : (
                   <User className="h-4 w-4" />
                 )}
-                <span className="text-xs max-w-24 truncate">{user.username}</span>
-              </Link>
+                <span className="text-xs max-w-24 truncate ml-2">{user.username}</span>
+                <ChevronDown className="h-3 w-3 ml-1 opacity-70" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <Link href="/perfil">
+                  <User className="h-4 w-4" />
+                  Ir al perfil
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setShowSettings(true)}>
+                <Settings className="h-4 w-4" />
+                Ajustes
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={cerrarSesion}>
+                <LogOut className="h-4 w-4" />
+                Cerrar sesión
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowAuth(true)}
+              title="Iniciar sesión"
+            >
+              <LogIn className="h-4 w-4 mr-1" />
+              <span className="text-xs">Iniciar sesión</span>
             </Button>
             <Button
               variant="ghost"
               size="icon"
-              onClick={cerrarSesion}
-              title="Cerrar sesión"
+              onClick={() => setShowSettings(true)}
+              title="Ajustes"
             >
-              <LogOut className="h-4 w-4" />
+              <Settings className="h-4 w-4" />
             </Button>
           </>
-        ) : (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowAuth(true)}
-            title="Iniciar sesión"
-          >
-            <LogIn className="h-4 w-4 mr-1" />
-            <span className="text-xs">Iniciar sesión</span>
-          </Button>
         )}
-
-        <ThemeToggle />
 
         {codigo && onVolverAlInicio && (
           <Button
@@ -160,7 +186,7 @@ export function Header({ onNuevaPartida, onToggleSidebar, onVolverAlInicio }: He
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Inventario de {personaje?.nombre}</DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="fuente-narrativa">
               {personaje?.descripcion_narrativa}
             </DialogDescription>
           </DialogHeader>
@@ -169,7 +195,7 @@ export function Header({ onNuevaPartida, onToggleSidebar, onVolverAlInicio }: He
               No tenés objetos en tu inventario.
             </p>
           ) : (
-            <ul className="grid gap-2">
+            <ul className="fuente-narrativa grid gap-2">
               {inventario.map((item, idx) => (
                 <li
                   key={idx}
@@ -185,6 +211,8 @@ export function Header({ onNuevaPartida, onToggleSidebar, onVolverAlInicio }: He
       </Dialog>
 
       <AuthModal open={showAuth} onOpenChange={setShowAuth} />
+
+      <SettingsSheet open={showSettings} onOpenChange={setShowSettings} />
     </header>
   );
 }

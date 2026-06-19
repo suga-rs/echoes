@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import get_partida_service
+from app.api.dependencies import get_current_user, get_partida_service
 from app.main import app
 from app.models.domain import (
     EstadoPartida,
@@ -78,6 +78,24 @@ def test_start_partida_validacion_corta(client_con_servicio_mockeado):
         json={"genero": "fantasía", "descripcion_personaje": "abc"},
     )
     assert r.status_code == 422
+
+
+def test_eliminar_partida_sin_token_401(client_con_servicio_mockeado):
+    client, svc = client_con_servicio_mockeado
+    r = client.delete("/api/partidas/abc-123-xyz")
+    assert r.status_code == 401
+    svc.eliminar_partida.assert_not_called()
+
+
+def test_eliminar_partida_autenticado_204(client_con_servicio_mockeado):
+    client, svc = client_con_servicio_mockeado
+    app.dependency_overrides[get_current_user] = lambda: "user-7"
+    try:
+        r = client.delete("/api/partidas/abc-123-xyz")
+        assert r.status_code == 204
+        svc.eliminar_partida.assert_called_once_with("abc-123-xyz", "user-7")
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
 
 
 def test_avanzar_turno(client_con_servicio_mockeado):

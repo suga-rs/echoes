@@ -54,3 +54,8 @@ class CredencialesInvalidasError(AppError):
 class NoAutenticadoError(AppError):
     status_code = 401
     code = "no_autenticado"
+
+
+class AccesoDenegadoError(AppError):
+    status_code = 403
+    code = "acceso_denegado"

@@ -62,6 +62,24 @@ class ImagenRepository:
         blob = self._container.get_blob_client(nombre)
         return blob.download_blob().readall()
 
+    def eliminar_imagenes(self, codigo_partida: str) -> None:
+        """Borra todos los blobs de una partida (imágenes por turno + referencia
+        del personaje), que comparten el prefijo `{codigo_partida}/`. Best-effort:
+        loguea y continúa ante fallos individuales para que la eliminación del
+        documento siga su curso."""
+        prefijo = f"{codigo_partida}/"
+        try:
+            nombres = [b.name for b in self._container.list_blobs(name_starts_with=prefijo)]
+        except Exception:
+            logger.exception("No se pudieron listar imágenes de %s", codigo_partida)
+            return
+        for nombre in nombres:
+            try:
+                self._container.delete_blob(nombre)
+            except Exception:
+                logger.exception("No se pudo borrar el blob %s", nombre)
+        logger.info("Imágenes eliminadas para %s (%d blobs)", codigo_partida, len(nombres))
+
     def subir_avatar(self, user_id: str, contenido: bytes, ext: str, content_type: str) -> str:
         # Nombre fijo por usuario + overwrite: cada subida reemplaza la anterior.
         nombre = f"avatar/{user_id}.{ext}"

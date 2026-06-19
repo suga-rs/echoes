@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from app.core import telemetry
 from app.core.config import Settings, get_settings
 from app.core.exceptions import (
+    AccesoDenegadoError,
     FoundryError,
     LimiteImagenesExcedidoError,
     PartidaFinalizadaError,
@@ -271,6 +272,27 @@ class PartidaService:
 
     def listar_partidas(self, user_id: str | None = None) -> list[PartidaResumen]:
         return self.partidas.list_all(user_id=user_id)
+
+    @telemetry.traced("eliminar_partida")
+    def eliminar_partida(self, codigo_partida: str, user_id: str) -> None:
+        """Elimina una partida del usuario que la posee. Rechaza el bucket
+        compartido del Creator ("0") y a quien no sea el dueño. Limpia los blobs
+        de imagen (best-effort) antes de borrar el documento, que es el resultado
+        autoritativo de la operación."""
+        partida = self.partidas.get(codigo_partida)  # 404 si no existe
+        owner = partida.metadata.user_id
+        if owner == "0":
+            raise AccesoDenegadoError("Las partidas del Creator no se pueden eliminar")
+        if owner != user_id:
+            raise AccesoDenegadoError("No podés eliminar una partida que no es tuya")
+
+        try:
+            self.imagenes.eliminar_imagenes(codigo_partida)
+        except Exception:
+            logger.exception("Falló la limpieza de imágenes de %s", codigo_partida)
+
+        self.partidas.delete(codigo_partida)
+        logger.info("Partida eliminada: codigo=%s, user_id=%s", codigo_partida, user_id)
 
     def generar_descripcion_aleatoria(self, genero: Genero) -> str:
         system = (
