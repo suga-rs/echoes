@@ -5,7 +5,7 @@ import json
 import random
 import time
 from collections.abc import AsyncGenerator, Callable
-from typing import Any, TypeVar
+from typing import Any, Literal, TypeVar
 
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from openai import (
@@ -238,7 +238,7 @@ class FoundryClient:
         reference_bytes: bytes,
         *,
         size: str = "1536x1024",
-        input_fidelity: str = "high",
+        input_fidelity: Literal["high", "low"] = "high",
     ) -> bytes:
         """Genera una imagen de escena anclada a una imagen de referencia del
         personaje vía images.edit. input_fidelity="high" preserva la identidad
