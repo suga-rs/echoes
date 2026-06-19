@@ -8,6 +8,9 @@ from app.models.domain import Genero
 from app.services.prompts import (
     CREATION_POOLS,
     ESTILO_POR_GENERO,
+    PROMPT_VERSION,
+    SYSTEM_PROMPT_CREACION,
+    SYSTEM_PROMPT_TURNO,
     SemillaCreativa,
     build_creacion_user_prompt,
     build_reference_prompt,
@@ -128,3 +131,31 @@ def test_reference_prompt_incluye_visual_estilo_y_encuadre_sin_escena():
 
     # NO debe contener una descripción de escena (eso lo aporta el edit por turno).
     assert "scene:" not in low
+
+
+# --- regla de idioma (español rioplatense salvo `_en`) -----------------------
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        pytest.param(SYSTEM_PROMPT_TURNO, id="turno"),
+        pytest.param(SYSTEM_PROMPT_CREACION, id="creacion"),
+    ],
+)
+def test_system_prompt_fija_regla_de_idioma_bidireccional(prompt: str):
+    """Ambos system prompts deben fijar explícitamente que todo el texto va en
+    español rioplatense salvo los campos `_en`, que van en inglés. Esta es la
+    palanca que evita que objetivo/inventario/opciones fuguen al inglés."""
+    low = prompt.lower()
+    assert "español rioplatense" in low
+    # La regla se ancla a la convención `_en` de forma explícita.
+    assert "_en" in prompt
+    # Y nombra inglés como la excepción (no como el default).
+    assert "inglés" in low
+
+
+def test_prompt_version_fue_bumpeada():
+    """Pin de la versión activa: cambiar prompts/schema sin bumpear esto (y sin
+    agregar fila al changelog en docs/prompts.md) rompe este test a propósito."""
+    assert PROMPT_VERSION == "2.2.0"

@@ -9,7 +9,7 @@ from app.models.domain import Genero, Partida
 # SYSTEM_PROMPT_* o los schemas en llm_schema.py. Se loguea en cada llamada al
 # LLM y se persiste en la metadata de cada partida para poder correlacionar
 # calidad/fallos con la versión activa. Ver changelog en docs/prompts.md.
-PROMPT_VERSION = "2.1.0"
+PROMPT_VERSION = "2.2.0"
 
 SYSTEM_PROMPT_TURNO = """\
 Sos el narrador de una aventura de texto interactiva en español rioplatense. \
@@ -114,7 +114,12 @@ Ejemplo de opciones BUENAS (intenciones genuinamente distintas):
   - "Ofrecerle monedas a cambio de su silencio"
   - "Rodear el puesto por el callejón trasero"
 
-# ESPAÑOL RIOPLATENSE
+# IDIOMA (regla dura)
+
+TODOS los campos de texto de tu respuesta van en español rioplatense, SIN \
+EXCEPCIÓN, salvo los campos cuyo nombre termina en `_en` (como \
+descripcion_escena_en), que van en inglés. Esto incluye explícitamente el \
+objetivo, el inventario (agregar/quitar) y las opciones: nunca en inglés.
 
 Usás "vos" en lugar de "tú". Conjugaciones acordes ("tenés", "podés", "mirá").
 """
@@ -141,8 +146,9 @@ primeras opciones, y una descripción visual de la escena en inglés.
 
 Reglas:
 - Respondés en JSON válido siguiendo el schema. Nada de texto extra.
-- La narrativa de apertura en español rioplatense.
-- Las descripciones visuales en inglés.
+- IDIOMA: TODOS los campos de texto van en español rioplatense (incluidos el \
+objetivo, el inventario inicial y las opciones), SALVO los campos cuyo nombre \
+termina en `_en` (las descripciones visuales), que van en inglés.
 - Tono PG-13.
 - Respetá el género: fantasía, ciencia ficción o terror.
 """

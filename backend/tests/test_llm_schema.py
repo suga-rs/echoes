@@ -181,3 +181,28 @@ CREACION_INVALIDOS = [
 def test_creacion_invalido_falla(payload: dict):
     with pytest.raises(ValidationError):
         validate(payload, CREACION_JSON_SCHEMA)
+
+
+# ----------------------------------------------------------- IDIOMA POR CAMPO
+
+
+def _es_descr_espanol(node: dict) -> bool:
+    return "español rioplatense" in node.get("description", "").lower()
+
+
+def test_campos_que_fugaban_llevan_description_en_espanol():
+    """Las properties cortas tipo etiqueta que fugaban al inglés
+    (objetivo, inventario, opciones) deben declarar su idioma en el schema,
+    reforzando la regla del system prompt donde el modelo emite cada valor."""
+    turno_props = TURNO_JSON_SCHEMA["properties"]
+    estado_props = turno_props["actualizaciones_estado"]["properties"]
+    assert _es_descr_espanol(turno_props["opciones"]["items"])
+    assert _es_descr_espanol(estado_props["agregar_inventario"]["items"])
+    assert _es_descr_espanol(estado_props["quitar_inventario"]["items"])
+
+    creacion_props = CREACION_JSON_SCHEMA["properties"]
+    assert _es_descr_espanol(creacion_props["world_state_inicial"]["properties"]["objetivo"])
+    assert _es_descr_espanol(
+        creacion_props["personaje"]["properties"]["inventario_inicial"]["items"]
+    )
+    assert _es_descr_espanol(creacion_props["primera_escena"]["properties"]["opciones"]["items"])

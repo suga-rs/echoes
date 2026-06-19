@@ -22,7 +22,12 @@ TURNO_JSON_SCHEMA: dict[str, Any] = {
             "type": "array",
             "minItems": 3,
             "maxItems": 3,
-            "items": {"type": "string", "minLength": 3, "maxLength": 100},
+            "items": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 100,
+                "description": "En español rioplatense (es-AR).",
+            },
         },
         "actualizaciones_estado": {
             "type": "object",
@@ -38,8 +43,20 @@ TURNO_JSON_SCHEMA: dict[str, Any] = {
             "additionalProperties": False,
             "properties": {
                 "ubicacion_nueva": {"type": ["string", "null"]},
-                "agregar_inventario": {"type": "array", "items": {"type": "string"}},
-                "quitar_inventario": {"type": "array", "items": {"type": "string"}},
+                "agregar_inventario": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "description": "En español rioplatense (es-AR).",
+                    },
+                },
+                "quitar_inventario": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "description": "En español rioplatense (es-AR).",
+                    },
+                },
                 "evento_clave": {"type": ["string", "null"]},
                 "npc_encontrado": {
                     "oneOf": [
@@ -127,7 +144,10 @@ CREACION_JSON_SCHEMA: dict[str, Any] = {
                 "descripcion_visual_en": {"type": "string", "minLength": 50},
                 "inventario_inicial": {
                     "type": "array",
-                    "items": {"type": "string"},
+                    "items": {
+                        "type": "string",
+                        "description": "En español rioplatense (es-AR).",
+                    },
                     "maxItems": 5,
                 },
             },
@@ -138,7 +158,10 @@ CREACION_JSON_SCHEMA: dict[str, Any] = {
             "additionalProperties": False,
             "properties": {
                 "ubicacion_inicial": {"type": "string"},
-                "objetivo": {"type": "string"},
+                "objetivo": {
+                    "type": "string",
+                    "description": "En español rioplatense (es-AR).",
+                },
             },
         },
         "primera_escena": {
@@ -151,7 +174,10 @@ CREACION_JSON_SCHEMA: dict[str, Any] = {
                     "type": "array",
                     "minItems": 3,
                     "maxItems": 3,
-                    "items": {"type": "string"},
+                    "items": {
+                        "type": "string",
+                        "description": "En español rioplatense (es-AR).",
+                    },
                 },
                 "descripcion_imagen_en": {"type": "string"},
             },
