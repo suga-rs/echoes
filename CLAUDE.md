@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Echoes** is an AI-powered interactive text adventure generator. Players choose a genre (fantasy, sci-fi, horror), describe their character, and the system narrates a branching story driven by `gpt-4.1-mini`, with procedural images from `gpt-image-2` via Azure Foundry. All game state is persisted in Azure Cosmos DB; images go to Azure Blob Storage.
+**Echoes** is an AI-powered interactive text adventure generator. Players choose a genre (fantasy, sci-fi, horror), describe their character, and the system narrates a branching story driven by `gpt-4.1-mini`, with procedural images from `gpt-image-2` and on-demand spoken narration from `gpt-4o-mini-tts` via Azure Foundry. All game state is persisted in Azure Cosmos DB; images and narration audio go to Azure Blob Storage.
 
 ## Commands
 
@@ -86,6 +86,7 @@ src/components/ui/           →  Primitive UI (Button, Dialog, Input — Radix 
 | Var | Description |
 |-----|-------------|
 | `FOUNDRY_ENDPOINT` | Azure Foundry endpoint URL |
+| `AUDIO_DEPLOYMENT` | Text-to-speech deployment for narration audio (e.g. `gpt-4o-mini-tts`). Audio is generated lazily (per-turn play button), always in Spanish, and cached to Blob Storage keyed by turn + voice. Default `gpt-4o-mini-tts`. |
 | `FOUNDRY_API_KEY` | Leave empty to use Entra ID instead |
 | `LLM_DEPLOYMENT` | Model deployment name (e.g. `gpt-4.1-mini`) |
 | `IMAGE_DEPLOYMENT` | Image model deployment (e.g. `gpt-image-2`) |

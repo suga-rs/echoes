@@ -9,6 +9,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import type { NarratorVoice } from "@/lib/types";
 import {
   type NarrativaFont,
   type NarrativaSize,
@@ -36,6 +37,19 @@ const THEME_OPTIONS: { value: string; label: string }[] = [
   { value: "light", label: "Claro" },
   { value: "dark", label: "Oscuro" },
   { value: "system", label: "Sistema" },
+];
+
+const VOICE_OPTIONS: { value: NarratorVoice; label: string }[] = [
+  { value: "alloy", label: "Alloy" },
+  { value: "ash", label: "Ash" },
+  { value: "ballad", label: "Ballad" },
+  { value: "coral", label: "Coral" },
+  { value: "echo", label: "Echo" },
+  { value: "fable", label: "Fable" },
+  { value: "onyx", label: "Onyx" },
+  { value: "nova", label: "Nova" },
+  { value: "sage", label: "Sage" },
+  { value: "shimmer", label: "Shimmer" },
 ];
 
 function OptionGroup<T extends string>({
@@ -79,8 +93,10 @@ function OptionGroup<T extends string>({
 export function SettingsSheet({ open, onOpenChange }: SettingsSheetProps) {
   const narrativaFont = useSettingsStore((s) => s.narrativaFont);
   const narrativaSize = useSettingsStore((s) => s.narrativaSize);
+  const narratorVoice = useSettingsStore((s) => s.narratorVoice);
   const setNarrativaFont = useSettingsStore((s) => s.setNarrativaFont);
   const setNarrativaSize = useSettingsStore((s) => s.setNarrativaSize);
+  const setNarratorVoice = useSettingsStore((s) => s.setNarratorVoice);
 
   const { theme, setTheme } = useTheme();
   // El tema solo es legible tras montar en el cliente (evita mismatch de hidratación).
@@ -112,6 +128,12 @@ export function SettingsSheet({ open, onOpenChange }: SettingsSheetProps) {
             value={mounted ? theme : undefined}
             options={THEME_OPTIONS}
             onSelect={setTheme}
+          />
+          <OptionGroup
+            label="Voz del narrador"
+            value={narratorVoice}
+            options={VOICE_OPTIONS}
+            onSelect={setNarratorVoice}
           />
 
           <p className="narrativa border-t pt-4 text-muted-foreground">

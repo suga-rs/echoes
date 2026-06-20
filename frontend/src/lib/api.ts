@@ -7,9 +7,11 @@
 
 import type {
   ApiError,
+  AudioTurnoResponse,
   AuthResponse,
   AvatarResponse,
   EstadoPartida,
+  NarratorVoice,
   Partida,
   PartidaResumen,
   PerfilResponse,
@@ -181,6 +183,12 @@ export const api = {
   generarImagenTurno: (codigo: string, turno: number) =>
     request<{ imagen_url: string }>(`/api/partidas/${codigo}/turn/${turno}/image`, {
       method: "POST",
+    }),
+
+  generarAudioTurno: (codigo: string, turno: number, voice: NarratorVoice) =>
+    request<AudioTurnoResponse>(`/api/partidas/${codigo}/turn/${turno}/audio`, {
+      method: "POST",
+      body: JSON.stringify({ voice }),
     }),
 
   marcarFeedback: (codigo: string, turno: number, incoherente = true) =>

@@ -36,6 +36,25 @@ class FaseNarrativa(StrEnum):
     RESOLUCION = "resolucion"
 
 
+class VozNarrador(StrEnum):
+    """Voces soportadas por el modelo TTS (gpt-4o-mini-tts). Fuente de verdad del
+    allow-list: confirmar contra el deployment de la región (ver docs/setup_azure.md)."""
+
+    ALLOY = "alloy"
+    ASH = "ash"
+    BALLAD = "ballad"
+    CORAL = "coral"
+    ECHO = "echo"
+    FABLE = "fable"
+    ONYX = "onyx"
+    NOVA = "nova"
+    SAGE = "sage"
+    SHIMMER = "shimmer"
+
+
+VOZ_NARRADOR_DEFAULT = VozNarrador.ALLOY
+
+
 class Personaje(BaseModel):
     nombre: str
     descripcion_narrativa: str
@@ -153,6 +172,15 @@ class StartResponse(BaseModel):
 
 class ImagenTurnoResponse(BaseModel):
     imagen_url: str
+
+
+class AudioTurnoRequest(BaseModel):
+    # El tipo enum rechaza voces no soportadas con 422 antes de tocar el servicio.
+    voice: VozNarrador = VOZ_NARRADOR_DEFAULT
+
+
+class AudioTurnoResponse(BaseModel):
+    audio_url: str
 
 
 class StateResponse(BaseModel):

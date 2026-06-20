@@ -8,9 +8,13 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import type { NarratorVoice } from "@/lib/types";
 
 export type NarrativaFont = "serif" | "sans" | "dyslexic";
 export type NarrativaSize = "sm" | "md" | "lg";
+
+/** Voz por defecto del narrador para la síntesis de audio (TTS). */
+export const NARRATOR_VOICE_DEFAULT: NarratorVoice = "alloy";
 
 /** Mapa enum → stack de fuentes concreto (fuente única de verdad). */
 export const FONT_STACKS: Record<NarrativaFont, string> = {
@@ -31,8 +35,10 @@ export const SETTINGS_STORAGE_KEY = "aventuras-settings";
 interface SettingsState {
   narrativaFont: NarrativaFont;
   narrativaSize: NarrativaSize;
+  narratorVoice: NarratorVoice;
   setNarrativaFont: (font: NarrativaFont) => void;
   setNarrativaSize: (size: NarrativaSize) => void;
+  setNarratorVoice: (voice: NarratorVoice) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -40,8 +46,10 @@ export const useSettingsStore = create<SettingsState>()(
     (set) => ({
       narrativaFont: "serif",
       narrativaSize: "md",
+      narratorVoice: NARRATOR_VOICE_DEFAULT,
       setNarrativaFont: (narrativaFont) => set({ narrativaFont }),
       setNarrativaSize: (narrativaSize) => set({ narrativaSize }),
+      setNarratorVoice: (narratorVoice) => set({ narratorVoice }),
     }),
     { name: SETTINGS_STORAGE_KEY },
   ),

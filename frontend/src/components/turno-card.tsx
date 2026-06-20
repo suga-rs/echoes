@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Image from "next/image";
-import { Flag, ImagePlus } from "lucide-react";
+import { Flag, ImagePlus, Loader2, Pause, Play } from "lucide-react";
 import type { TurnoHistorial } from "@/lib/types";
 import { ImagenModal } from "@/components/imagen-modal";
 import { api, ApiClientError } from "@/lib/api";
 import { usePartidaStore } from "@/store/partida-store";
+import { useSettingsStore } from "@/store/settings-store";
 
 interface TurnoCardProps {
   turno: TurnoHistorial;
@@ -21,8 +22,16 @@ export function TurnoCard({ turno, esUltimo, imagenCargando = false }: TurnoCard
   const [limiteAlcanzado, setLimiteAlcanzado] = useState(false);
   const [marcado, setMarcado] = useState(turno.feedback === "incoherente");
 
+  const [audioCargando, setAudioCargando] = useState(false);
+  const [audioReproduciendo, setAudioReproduciendo] = useState(false);
+  const [audioError, setAudioError] = useState<string | null>(null);
+  // Audio element + URL cacheada por voz: replays no vuelven a pegarle a la API.
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioCacheRef = useRef<{ voice: string; url: string } | null>(null);
+
   const codigo = usePartidaStore((s) => s.codigoPartida);
   const actualizarImagenTurno = usePartidaStore((s) => s.actualizarImagenTurno);
+  const narratorVoice = useSettingsStore((s) => s.narratorVoice);
 
   const marcarIncoherente = async () => {
     if (!codigo || marcado) return;
@@ -31,6 +40,48 @@ export function TurnoCard({ turno, esUltimo, imagenCargando = false }: TurnoCard
       await api.marcarFeedback(codigo, turno.turno);
     } catch {
       setMarcado(false);
+    }
+  };
+
+  const reproducirAudio = async () => {
+    if (!codigo || audioCargando) return;
+
+    // Si ya está sonando, lo detenemos (toggle).
+    if (audioReproduciendo) {
+      audioRef.current?.pause();
+      return;
+    }
+
+    setAudioError(null);
+
+    // Reusamos la URL cacheada si es de la voz actual; si cambió la voz, refetch.
+    let url = audioCacheRef.current?.voice === narratorVoice ? audioCacheRef.current.url : null;
+    if (!url) {
+      setAudioCargando(true);
+      try {
+        const { audio_url } = await api.generarAudioTurno(codigo, turno.turno, narratorVoice);
+        url = audio_url;
+        audioCacheRef.current = { voice: narratorVoice, url };
+      } catch (err) {
+        setAudioError(err instanceof Error ? err.message : "No se pudo generar el audio");
+        return;
+      } finally {
+        setAudioCargando(false);
+      }
+    }
+
+    let audio = audioRef.current;
+    if (!audio || audio.src !== url) {
+      audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onplay = () => setAudioReproduciendo(true);
+      audio.onpause = () => setAudioReproduciendo(false);
+      audio.onended = () => setAudioReproduciendo(false);
+    }
+    try {
+      await audio.play();
+    } catch {
+      // El navegador puede rechazar play() (p. ej. sin gesto del usuario); lo ignoramos.
     }
   };
 
@@ -127,6 +178,26 @@ export function TurnoCard({ turno, esUltimo, imagenCargando = false }: TurnoCard
         )}
         {error && <p className="text-xs text-destructive mb-2">{error}</p>}
         <p className="narrativa whitespace-pre-wrap">{turno.narrativa}</p>
+
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void reproducirAudio()}
+            disabled={audioCargando}
+            aria-label={audioReproduciendo ? "Detener la narración" : "Escuchar la narración"}
+            title={audioReproduciendo ? "Detener la narración" : "Escuchar la narración"}
+            className="text-muted-foreground hover:text-primary flex items-center disabled:opacity-60"
+          >
+            {audioCargando ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : audioReproduciendo ? (
+              <Pause className="h-4 w-4" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
+          </button>
+          {audioError && <span className="text-xs text-destructive">{audioError}</span>}
+        </div>
       </div>
     </article>
   );

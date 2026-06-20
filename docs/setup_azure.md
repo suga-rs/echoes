@@ -90,6 +90,7 @@ Adoptá una convención y respetala. Acá uso `ata` (aventuras de texto con IA) 
 | Foundry Project      | `proj-ata`                                                                         |
 | Deployment LLM       | `gpt-41-mini-ata`                                                                  |
 | Deployment imagen    | `gpt-image-2-ata`                                                                  |
+| Deployment audio TTS | `gpt-4o-mini-tts-ata`                                                              |
 | Cosmos DB Account    | `cosmos-ata-<sufijo>` (debe ser único globalmente; usá tus iniciales o un número)  |
 | Blob Storage Account | `stataimgs<sufijo>` (sin guiones, sin mayúsculas, único globalmente, máx 24 chars) |
 | App Insights         | `appi-ata`                                                                         |
@@ -106,6 +107,7 @@ export FOUNDRY_NAME=foundry-ata
 export PROJECT_NAME=proj-ata
 export LLM_DEPLOY=gpt-41-mini-ata
 export IMG_DEPLOY=gpt-image-2-ata
+export TTS_DEPLOY=gpt-4o-mini-tts-ata
 export COSMOS_NAME=cosmos-ata-XYZ        # reemplazar XYZ
 export STORAGE_NAME=stataimgsXYZ          # reemplazar XYZ
 export APPI_NAME=appi-ata
@@ -132,7 +134,8 @@ Subscription: Azure for Students
     ├── Foundry Account: foundry-ata
     │   └── Foundry Project: proj-ata
     │       ├── Deployment: gpt-41-mini-ata    (texto)
-    │       └── Deployment: gpt-image-2-ata    (imagen)
+    │       ├── Deployment: gpt-image-2-ata    (imagen)
+    │       └── Deployment: gpt-4o-mini-tts-ata (audio TTS)
     ├── Cosmos DB Account: cosmos-ata-XYZ (serverless)
     │   └── Database: aventuras
     │       └── Container: partidas (PK: /codigo_partida)
@@ -332,6 +335,61 @@ Si la respuesta incluye un campo `data` con un `b64_json` o `url`, el modelo est
 
 ---
 
+## Paso 5b: Desplegar gpt-4o-mini-tts
+
+Este deployment es el modelo de texto-a-voz (TTS) que narra en audio el texto del narrador, a demanda (cuando el jugador toca "play" en un turno).
+
+```bash
+export TTS_DEPLOY=gpt-4o-mini-tts-ata
+
+az cognitiveservices account deployment create \
+  --name $FOUNDRY_NAME \
+  --resource-group $RG \
+  --deployment-name $TTS_DEPLOY \
+  --model-name gpt-4o-mini-tts \
+  --model-version "2025-03-20" \
+  --model-format OpenAI \
+  --sku-name GlobalStandard \
+  --sku-capacity 1
+```
+
+Notas:
+
+- `--model-version`: verificá la versión vigente en tu región antes de ejecutar con `az cognitiveservices account list-models --name $FOUNDRY_NAME --resource-group $RG -o table | grep -i tts` y reemplazá si hay una más nueva.
+- Si `gpt-4o-mini-tts` no aparece en eastus2 (la disponibilidad por región cambia), probá `eastus`/`westus3`, o usá `tts-1` como alternativa y ajustá `AUDIO_DEPLOYMENT`.
+- El audio se sintetiza en español (el backend pasa instrucciones de idioma) y se cachea en Blob Storage; no requiere cuota alta.
+
+### Voces soportadas
+
+La lista de voces es propiedad del modelo, no de la región. Confirmá empíricamente qué voces acepta tu deployment (devuelve `200` si la voz es válida, `400` si no):
+
+```bash
+for VOZ in alloy ash ballad coral echo fable onyx nova sage shimmer; do
+  CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+    "$FOUNDRY_ENDPOINT/openai/deployments/$TTS_DEPLOY/audio/speech?api-version=$API_VERSION" \
+    -H "Content-Type: application/json" \
+    -H "api-key: $API_KEY" \
+    -d '{"model":"'$TTS_DEPLOY'","input":"hola","voice":"'$VOZ'"}')
+  echo "$VOZ -> $CODE"
+done
+```
+
+Las voces que devuelvan `200` son las que tenés que dejar habilitadas en el allow-list del backend (`VozNarrador` en `app/models/domain.py`) y en las opciones de la UI (`settings-store.ts`).
+
+### Test rápido del deployment de audio
+
+```bash
+curl -s "$FOUNDRY_ENDPOINT/openai/deployments/$TTS_DEPLOY/audio/speech?api-version=$API_VERSION" \
+  -H "Content-Type: application/json" \
+  -H "api-key: $API_KEY" \
+  -d '{"model":"'$TTS_DEPLOY'","input":"Hola, esto es una prueba de narración.","voice":"alloy"}' \
+  --output test_tts.mp3
+
+# Reproducí test_tts.mp3 para verificar que se generó audio en español.
+```
+
+---
+
 ## Paso 6: Crear Cosmos DB serverless
 
 Cosmos en modo serverless cobra solo por uso. Para un TP con 100 sesiones de prueba, el costo va a ser de centavos.
@@ -509,6 +567,7 @@ PROJECT_ENDPOINT=https://foundry-ata.services.ai.azure.com/api/projects/proj-ata
 FOUNDRY_API_KEY=<tu_api_key>   # solo para desarrollo local; en producción usar Managed Identity
 LLM_DEPLOYMENT=gpt-41-mini-ata
 IMAGE_DEPLOYMENT=gpt-image-2-ata
+AUDIO_DEPLOYMENT=gpt-4o-mini-tts-ata
 API_VERSION=2025-04-01-preview
 
 # Cosmos DB

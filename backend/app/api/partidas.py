@@ -10,6 +10,8 @@ from app.api.dependencies import get_current_user, get_optional_user, get_partid
 from app.core.exceptions import AppError
 from app.core.logging import get_logger
 from app.models.domain import (
+    AudioTurnoRequest,
+    AudioTurnoResponse,
     FeedbackRequest,
     FeedbackResponse,
     ImagenTurnoResponse,
@@ -88,6 +90,18 @@ def generar_imagen_turno(
 ) -> ImagenTurnoResponse:
     imagen_url = service.generar_imagen_turno(codigo, turno)
     return ImagenTurnoResponse(imagen_url=imagen_url)
+
+
+@router.post("/{codigo}/turn/{turno}/audio", response_model=AudioTurnoResponse)
+def generar_audio_turno(
+    codigo: str,
+    turno: int,
+    body: AudioTurnoRequest,
+    service: Annotated[PartidaService, Depends(get_partida_service)],
+) -> AudioTurnoResponse:
+    # `body.voice` es un enum: una voz no soportada ya devuelve 422 acá.
+    audio_url = service.generar_audio_turno(codigo, turno, body.voice.value)
+    return AudioTurnoResponse(audio_url=audio_url)
 
 
 @router.post("/{codigo}/turn/{turno}/feedback", response_model=FeedbackResponse)

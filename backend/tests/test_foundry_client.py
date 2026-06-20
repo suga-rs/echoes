@@ -110,3 +110,39 @@ def test_agota_reintentos_y_envuelve_en_foundry_error(foundry, monkeypatch):
     # llm_max_retries=2 → 3 intentos totales, 2 esperas
     assert create.call_count == 3
     assert len(foundry._sleeps) == 2
+
+
+def test_generar_audio_ok(foundry, monkeypatch):
+    resp = MagicMock()
+    resp.read.return_value = b"ID3-audio-bytes"
+    create = MagicMock(return_value=resp)
+    monkeypatch.setattr(foundry._client.audio.speech, "create", create)
+
+    audio = foundry.generar_audio("Hola mundo", "alloy")
+
+    assert audio == b"ID3-audio-bytes"
+    assert create.call_count == 1
+    kwargs = create.call_args.kwargs
+    assert kwargs["model"] == foundry.settings.audio_deployment
+    assert kwargs["voice"] == "alloy"
+    assert kwargs["input"] == "Hola mundo"
+    # El idioma es fijo (español), independiente de la voz.
+    assert "español" in kwargs["instructions"].lower()
+
+
+def test_generar_audio_vacio_lanza_foundry_error(foundry, monkeypatch):
+    resp = MagicMock()
+    resp.read.return_value = b""
+    monkeypatch.setattr(foundry._client.audio.speech, "create", MagicMock(return_value=resp))
+
+    with pytest.raises(FoundryError):
+        foundry.generar_audio("hola", "alloy")
+
+
+def test_generar_audio_error_envuelto_en_foundry_error(foundry, monkeypatch):
+    monkeypatch.setattr(
+        foundry._client.audio.speech, "create", MagicMock(side_effect=ValueError("boom"))
+    )
+
+    with pytest.raises(FoundryError):
+        foundry.generar_audio("hola", "alloy")

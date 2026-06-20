@@ -514,6 +514,32 @@ class PartidaService:
         self.partidas.upsert(partida)
         return imagen_url
 
+    @telemetry.traced("generar_audio_turno")
+    def generar_audio_turno(self, codigo_partida: str, turno_num: int, voice: str) -> str:
+        """Devuelve la URL del audio (TTS) de un turno. Sirve el cacheado en blob
+        si existe; si no, lo sintetiza en español, lo sube y devuelve la URL. No
+        modifica el documento de la partida (el cache vive en blob, por turno+voz)."""
+        partida = self.partidas.get(codigo_partida)
+
+        turno = next((t for t in partida.historial if t.turno == turno_num), None)
+        if turno is None:
+            raise PartidaNoEncontradaError(
+                f"El turno {turno_num} no existe en la partida {codigo_partida}"
+            )
+
+        cacheado = self.imagenes.obtener_audio_url(codigo_partida, turno_num, voice)
+        if cacheado:
+            return cacheado
+
+        logger.info(
+            "Generando audio a demanda: codigo=%s, turno=%s, voz=%s",
+            codigo_partida,
+            turno_num,
+            voice,
+        )
+        audio = self.foundry.generar_audio(turno.narrativa, voice)
+        return self.imagenes.subir_audio(codigo_partida, turno_num, voice, audio)
+
     async def avanzar_turno_stream(
         self, codigo_partida: str, accion: str
     ) -> AsyncGenerator[str, None]:

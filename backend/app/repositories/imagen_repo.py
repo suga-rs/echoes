@@ -40,6 +40,32 @@ class ImagenRepository:
         logger.info("Imagen subida: %s", url)
         return url
 
+    def _audio_blob_name(self, codigo_partida: str, turno: int, voice: str) -> str:
+        # Nombre determinístico por (partida, turno, voz): permite detectar el
+        # cache por existencia del blob. Bajo el prefijo `{codigo}/` para que
+        # `eliminar_imagenes` lo limpie junto con las imágenes.
+        return f"{codigo_partida}/audio/turno-{turno:03d}-{voice}.mp3"
+
+    def obtener_audio_url(self, codigo_partida: str, turno: int, voice: str) -> str | None:
+        """Devuelve la URL del audio cacheado para (turno, voz) si existe, o None."""
+        nombre = self._audio_blob_name(codigo_partida, turno, voice)
+        blob = self._container.get_blob_client(nombre)
+        if blob.exists():
+            return blob.url
+        return None
+
+    def subir_audio(self, codigo_partida: str, turno: int, voice: str, contenido: bytes) -> str:
+        nombre = self._audio_blob_name(codigo_partida, turno, voice)
+        blob = self._container.get_blob_client(nombre)
+        blob.upload_blob(
+            contenido,
+            overwrite=True,
+            content_settings=ContentSettings(content_type="audio/mpeg"),
+        )
+        url = blob.url
+        logger.info("Audio subido: %s", url)
+        return url
+
     def subir_referencia(self, codigo_partida: str, contenido: bytes) -> str:
         # Nombre fijo por partida + overwrite: la referencia canónica del
         # personaje se genera una sola vez y se reutiliza en cada imagen.

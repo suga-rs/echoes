@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     foundry_api_key: str = Field(default="")
     llm_deployment: str = Field(...)
     image_deployment: str = Field(...)
+    audio_deployment: str = Field(default="gpt-4o-mini-tts")
     api_version: str = Field(default="2025-04-01-preview")
 
     # Cosmos DB

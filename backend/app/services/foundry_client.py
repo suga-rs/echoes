@@ -26,6 +26,14 @@ logger = get_logger("foundry")
 
 _T = TypeVar("_T")
 
+# Instrucción de idioma para el TTS. El texto del narrador ya viene en español
+# (spanish-output-contract), pero las voces son agnósticas al idioma: sin esta
+# guía una voz podría leer el español con acento extranjero.
+_AUDIO_INSTRUCCIONES_ES = (
+    "Narrá el texto en español rioplatense neutro, con tono de narrador de una "
+    "aventura. Pronunciá todo el contenido en español."
+)
+
 # Errores que sí conviene reintentar (transitorios). El resto (BadRequestError,
 # autenticación, content-filter) se re-lanza de inmediato sin reintento.
 _TRANSITORIOS = (APIConnectionError, APITimeoutError, RateLimitError, InternalServerError)
@@ -282,6 +290,43 @@ class FoundryClient:
             raise FoundryError("Imagen (edit) devuelta como URL; configurar para b64_json")
 
         raise FoundryError("Imagen (edit) no contiene datos reconocibles")
+
+    def generar_audio(
+        self,
+        texto: str,
+        voice: str,
+        *,
+        response_format: str = "mp3",
+    ) -> bytes:
+        """Sintetiza voz a partir de `texto` con el modelo TTS, en español. La voz
+        la elige el jugador; el idioma es fijo (ver `_AUDIO_INSTRUCCIONES_ES`)."""
+        t0 = time.perf_counter()
+        try:
+            response = self._with_retries(
+                lambda: self._client.audio.speech.create(
+                    model=self.settings.audio_deployment,
+                    voice=voice,
+                    input=texto,
+                    instructions=_AUDIO_INSTRUCCIONES_ES,
+                    response_format=response_format,
+                )
+            )
+        except Exception as e:
+            telemetry.record_llm_error(operation="audio", tipo=type(e).__name__)
+            logger.exception("Foundry audio error")
+            raise FoundryError(f"Error generando audio: {e}") from e
+
+        telemetry.record_llm_call(
+            operation="audio",
+            model=self.settings.audio_deployment,
+            latency_ms=(time.perf_counter() - t0) * 1000,
+            usage=getattr(response, "usage", None),
+        )
+
+        audio = response.read()
+        if not audio:
+            raise FoundryError("Respuesta de audio vacía")
+        return audio
 
     async def chat_streaming_async(
         self,

@@ -689,3 +689,102 @@ def test_chokepoint_en_cupo_no_genera_referencia_ni_escena(
     foundry_mock.generar_imagen.assert_not_called()
     foundry_mock.editar_imagen.assert_not_called()
     assert partida_de_ejemplo.personaje.referencia_visual_url is None
+
+
+# --- Audio del narrador (TTS a demanda con cache en blob) --------------------
+
+
+def test_generar_audio_turno_cache_miss_sintetiza_y_sube(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    partida_de_ejemplo.historial = [_turno_con_escena(2)]
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+    imagen_repo_mock.obtener_audio_url.return_value = None
+    foundry_mock.generar_audio.return_value = b"audio-bytes"
+    imagen_repo_mock.subir_audio.return_value = "https://fake.blob/audio.mp3"
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    url = svc.generar_audio_turno("test-abc-123", 2, "alloy")
+
+    assert url == "https://fake.blob/audio.mp3"
+    foundry_mock.generar_audio.assert_called_once_with(
+        "Narrativa de prueba para el turno.", "alloy"
+    )
+    imagen_repo_mock.subir_audio.assert_called_once_with("test-abc-123", 2, "alloy", b"audio-bytes")
+
+
+def test_generar_audio_turno_cache_hit_no_llama_tts(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    partida_de_ejemplo.historial = [_turno_con_escena(2)]
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+    imagen_repo_mock.obtener_audio_url.return_value = "https://fake.blob/cached.mp3"
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    url = svc.generar_audio_turno("test-abc-123", 2, "alloy")
+
+    assert url == "https://fake.blob/cached.mp3"
+    foundry_mock.generar_audio.assert_not_called()
+    imagen_repo_mock.subir_audio.assert_not_called()
+
+
+def test_generar_audio_turno_inexistente_no_llama_tts(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    partida_de_ejemplo.historial = [_turno_con_escena(2)]
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    with pytest.raises(PartidaNoEncontradaError):
+        svc.generar_audio_turno("test-abc-123", 99, "alloy")
+    foundry_mock.generar_audio.assert_not_called()
+    imagen_repo_mock.obtener_audio_url.assert_not_called()
+
+
+def test_generar_audio_turno_voz_distinta_es_entrada_de_cache_separada(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    partida_de_ejemplo.historial = [_turno_con_escena(2)]
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+    imagen_repo_mock.obtener_audio_url.return_value = None
+    foundry_mock.generar_audio.return_value = b"audio-bytes"
+    imagen_repo_mock.subir_audio.return_value = "https://fake.blob/nova.mp3"
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    svc.generar_audio_turno("test-abc-123", 2, "nova")
+
+    # La voz forma parte de la clave de cache (lookup + subida).
+    imagen_repo_mock.obtener_audio_url.assert_called_once_with("test-abc-123", 2, "nova")
+    imagen_repo_mock.subir_audio.assert_called_once_with("test-abc-123", 2, "nova", b"audio-bytes")
+
+
+def test_audio_blob_name_bajo_prefijo_de_partida():
+    # El audio vive bajo `{codigo}/`, así que eliminar_imagenes (borrado por
+    # prefijo de la partida) ya limpia el audio al borrar la partida.
+    from app.repositories.imagen_repo import ImagenRepository
+
+    repo = ImagenRepository()
+    nombre = repo._audio_blob_name("abc-123", 2, "alloy")
+
+    assert nombre.startswith("abc-123/")
+    assert "alloy" in nombre

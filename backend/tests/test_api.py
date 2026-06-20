@@ -138,6 +138,36 @@ def test_feedback_endpoint(client_con_servicio_mockeado):
     svc.registrar_feedback.assert_called_once_with("abc", 2, True)
 
 
+def test_generar_audio_turno_endpoint(client_con_servicio_mockeado):
+    client, svc = client_con_servicio_mockeado
+    svc.generar_audio_turno.return_value = "https://fake.blob/audio.mp3"
+
+    r = client.post("/api/partidas/abc/turn/2/audio", json={"voice": "nova"})
+
+    assert r.status_code == 200
+    assert r.json() == {"audio_url": "https://fake.blob/audio.mp3"}
+    svc.generar_audio_turno.assert_called_once_with("abc", 2, "nova")
+
+
+def test_generar_audio_turno_voz_por_defecto(client_con_servicio_mockeado):
+    client, svc = client_con_servicio_mockeado
+    svc.generar_audio_turno.return_value = "https://fake.blob/a.mp3"
+
+    r = client.post("/api/partidas/abc/turn/2/audio", json={})
+
+    assert r.status_code == 200
+    svc.generar_audio_turno.assert_called_once_with("abc", 2, "alloy")
+
+
+def test_generar_audio_turno_voz_invalida_422(client_con_servicio_mockeado):
+    client, svc = client_con_servicio_mockeado
+
+    r = client.post("/api/partidas/abc/turn/2/audio", json={"voice": "no-existe"})
+
+    assert r.status_code == 422
+    svc.generar_audio_turno.assert_not_called()
+
+
 def test_state_endpoint(client_con_servicio_mockeado):
     client, svc = client_con_servicio_mockeado
     svc.get_partida.return_value = Partida(

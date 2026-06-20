@@ -1,10 +1,11 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api, ApiClientError } from "@/lib/api";
 import type { TurnoHistorial } from "@/lib/types";
 import { TurnoCard } from "@/components/turno-card";
 import { usePartidaStore } from "@/store/partida-store";
+import { useSettingsStore } from "@/store/settings-store";
 
 vi.mock("next/image", () => ({
   default: ({ src, alt }: { src: string; alt: string }) => (
@@ -16,6 +17,7 @@ vi.mock("next/image", () => ({
 vi.mock("@/lib/api", () => ({
   api: {
     generarImagenTurno: vi.fn(),
+    generarAudioTurno: vi.fn(),
     marcarFeedback: vi.fn().mockResolvedValue({ feedback: "incoherente" }),
   },
   ApiClientError: class ApiClientError extends Error {
@@ -30,6 +32,7 @@ vi.mock("@/lib/api", () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   usePartidaStore.getState().resetear();
+  useSettingsStore.setState({ narratorVoice: "alloy" });
 });
 
 const base: TurnoHistorial = {
@@ -129,6 +132,59 @@ describe("TurnoCard", () => {
     expect(
       screen.queryByRole("button", { name: /Ilustrar esta escena/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it("no pide audio antes de que el jugador lo reproduzca (lazy)", () => {
+    usePartidaStore.getState().establecerCodigo("abc-123");
+    render(<TurnoCard turno={base} esUltimo={false} />);
+
+    expect(api.generarAudioTurno).not.toHaveBeenCalled();
+  });
+
+  it("pide el audio con la voz seleccionada al reproducir por primera vez", async () => {
+    const user = userEvent.setup();
+    usePartidaStore.getState().establecerCodigo("abc-123");
+    vi.mocked(api.generarAudioTurno).mockResolvedValue({
+      audio_url: "https://example.com/a.mp3",
+    });
+
+    render(<TurnoCard turno={base} esUltimo={false} />);
+    await user.click(screen.getByRole("button", { name: /Escuchar la narración/ }));
+
+    await waitFor(() =>
+      expect(api.generarAudioTurno).toHaveBeenCalledWith("abc-123", 3, "alloy"),
+    );
+  });
+
+  it("reutiliza la URL cacheada en reproducciones sucesivas (no re-pide)", async () => {
+    const user = userEvent.setup();
+    usePartidaStore.getState().establecerCodigo("abc-123");
+    vi.mocked(api.generarAudioTurno).mockResolvedValue({
+      audio_url: "https://example.com/a.mp3",
+    });
+
+    render(<TurnoCard turno={base} esUltimo={false} />);
+    const boton = screen.getByRole("button", { name: /Escuchar la narración/ });
+
+    await user.click(boton);
+    await waitFor(() => expect(api.generarAudioTurno).toHaveBeenCalledTimes(1));
+
+    await user.click(boton);
+    expect(api.generarAudioTurno).toHaveBeenCalledTimes(1);
+  });
+
+  it("muestra un error si la generación de audio falla y deja reintentar", async () => {
+    const user = userEvent.setup();
+    usePartidaStore.getState().establecerCodigo("abc-123");
+    vi.mocked(api.generarAudioTurno).mockRejectedValue(new Error("audio boom"));
+
+    render(<TurnoCard turno={base} esUltimo={false} />);
+    await user.click(screen.getByRole("button", { name: /Escuchar la narración/ }));
+
+    expect(await screen.findByText("audio boom")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Escuchar la narración/ }),
+    ).toBeInTheDocument();
   });
 
   it("marca el turno como incoherente llamando a la API", async () => {

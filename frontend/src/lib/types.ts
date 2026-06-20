@@ -5,6 +5,23 @@
 
 export type Genero = "fantasía" | "ciencia ficción" | "terror";
 
+/** Voces del narrador soportadas por el modelo TTS (espeja `VozNarrador` del backend). */
+export type NarratorVoice =
+  | "alloy"
+  | "ash"
+  | "ballad"
+  | "coral"
+  | "echo"
+  | "fable"
+  | "onyx"
+  | "nova"
+  | "sage"
+  | "shimmer";
+
+export interface AudioTurnoResponse {
+  audio_url: string;
+}
+
 export type EstadoPartida = "en_curso" | "finalizada";
 
 export type TipoFinal = "exito" | "fracaso" | "ambiguo";
