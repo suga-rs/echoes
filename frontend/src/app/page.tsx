@@ -6,6 +6,7 @@ import { List, Sparkles } from "lucide-react";
 import { Header } from "@/components/header";
 import { InicioDialog } from "@/components/inicio-dialog";
 import { TurnoCard, StreamingTurnoCard } from "@/components/turno-card";
+import { DiceOverlay } from "@/components/dice-overlay";
 import { Acciones } from "@/components/acciones";
 import { FinalBanner } from "@/components/final-banner";
 import { PartidasList } from "@/components/partidas-list";
@@ -37,6 +38,8 @@ export default function HomePage() {
   const isStreaming = usePartidaStore((s) => s.isStreaming);
   const streamingNarrativa = usePartidaStore((s) => s.streamingNarrativa);
   const imagenUltimoTurnoPendiente = usePartidaStore((s) => s.imagenUltimoTurnoPendiente);
+  const tiradaActual = usePartidaStore((s) => s.tiradaActual);
+  const cerrarTirada = usePartidaStore((s) => s.cerrarTirada);
   const hidratarDesdeBackend = usePartidaStore((s) => s.hidratarDesdeBackend);
   const resetear = usePartidaStore((s) => s.resetear);
   const establecerCodigo = usePartidaStore((s) => s.establecerCodigo);
@@ -149,6 +152,10 @@ export default function HomePage() {
           </>
         )}
       </main>
+
+      {tiradaActual && (
+        <DiceOverlay tirada={tiradaActual} onClose={cerrarTirada} />
+      )}
 
       <InicioDialog open={showInicio} onOpenChange={setShowInicio} />
 

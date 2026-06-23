@@ -8,7 +8,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { Personaje, TurnoHistorial } from "@/lib/types";
+import type { Personaje, Tirada, TurnoHistorial } from "@/lib/types";
 
 interface PartidaState {
   codigoPartida: string | null;
@@ -25,6 +25,8 @@ interface PartidaState {
   isStreaming: boolean;
   streamingNarrativa: string | null;
   imagenUltimoTurnoPendiente: boolean;
+  // Tirada en curso a animar sobre la página (null = sin overlay de dado).
+  tiradaActual: Tirada | null;
 
   // Acciones
   iniciarPartida: (data: {
@@ -60,6 +62,10 @@ interface PartidaState {
   finalizarStreaming: (turno: TurnoHistorial, imagenPendiente: boolean) => void;
   cancelarStreaming: () => void;
   actualizarImagenTurno: (turnoNum: number, url: string) => void;
+  // Tirada: abre el overlay y descarta la narrativa de preparación (fase 1),
+  // que será reemplazada por el desenlace (fase 2) que se streamea a continuación.
+  iniciarTirada: (tirada: Tirada) => void;
+  cerrarTirada: () => void;
 }
 
 export const usePartidaStore = create<PartidaState>()(
@@ -77,6 +83,7 @@ export const usePartidaStore = create<PartidaState>()(
       isStreaming: false,
       streamingNarrativa: null,
       imagenUltimoTurnoPendiente: false,
+      tiradaActual: null,
 
       iniciarPartida: ({ codigo, personaje, objetivo, primerTurno }) =>
         set({
@@ -139,6 +146,7 @@ export const usePartidaStore = create<PartidaState>()(
           isStreaming: false,
           streamingNarrativa: null,
           imagenUltimoTurnoPendiente: false,
+          tiradaActual: null,
         }),
 
       iniciarStreaming: () => set({ isStreaming: true, streamingNarrativa: "" }),
@@ -152,13 +160,22 @@ export const usePartidaStore = create<PartidaState>()(
           isStreaming: false,
           streamingNarrativa: null,
           imagenUltimoTurnoPendiente: imagenPendiente,
+          tiradaActual: null,
         })),
 
       cancelarStreaming: () => set({
         isStreaming: false,
         streamingNarrativa: null,
         imagenUltimoTurnoPendiente: false,
+        tiradaActual: null,
       }),
+
+      iniciarTirada: (tirada) =>
+        // Al tirar, descartamos la narrativa de preparación (fase 1): el
+        // desenlace (fase 2) se streamea limpio a continuación.
+        set({ tiradaActual: tirada, streamingNarrativa: "" }),
+
+      cerrarTirada: () => set({ tiradaActual: null }),
 
       actualizarImagenTurno: (turnoNum, url) =>
         set((state) => ({

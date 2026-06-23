@@ -5,6 +5,7 @@ import Image from "next/image";
 import { Flag, ImagePlus } from "lucide-react";
 import type { TurnoHistorial } from "@/lib/types";
 import { ImagenModal } from "@/components/imagen-modal";
+import { TiradaReveal } from "@/components/tirada-reveal";
 import { api, ApiClientError } from "@/lib/api";
 import { usePartidaStore } from "@/store/partida-store";
 
@@ -126,6 +127,7 @@ export function TurnoCard({ turno, esUltimo, imagenCargando = false }: TurnoCard
           </p>
         )}
         {error && <p className="text-xs text-destructive mb-2">{error}</p>}
+        {turno.tirada && <TiradaReveal tirada={turno.tirada} />}
         <p className="narrativa whitespace-pre-wrap">{turno.narrativa}</p>
       </div>
     </article>

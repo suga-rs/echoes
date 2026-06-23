@@ -23,6 +23,7 @@ import { usePartidaStore } from "@/store/partida-store";
 import { useAuthStore } from "@/store/auth-store";
 import { AuthModal } from "./auth-modal";
 import { SettingsSheet } from "./settings-sheet";
+import { FichaAtributos } from "./ficha-atributos";
 
 interface HeaderProps {
   onNuevaPartida: () => void;
@@ -185,11 +186,22 @@ export function Header({ onNuevaPartida, onToggleSidebar, onVolverAlInicio }: He
       <Dialog open={showInventario} onOpenChange={setShowInventario}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Inventario de {personaje?.nombre}</DialogTitle>
+            <DialogTitle>Ficha de {personaje?.nombre}</DialogTitle>
             <DialogDescription className="fuente-narrativa">
               {personaje?.descripcion_narrativa}
             </DialogDescription>
           </DialogHeader>
+          {personaje?.atributos && (
+            <div className="mb-3">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
+                Atributos
+              </div>
+              <FichaAtributos atributos={personaje.atributos} />
+            </div>
+          )}
+          <div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
+            Inventario
+          </div>
           {inventario.length === 0 ? (
             <p className="text-muted-foreground italic text-sm">
               No tenés objetos en tu inventario.
