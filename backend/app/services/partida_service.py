@@ -621,9 +621,11 @@ class PartidaService:
         try:
             return self._parse_stream_turno(accumulated)
         except RespuestaLLMInvalidaError as e:
-            error_msg = self._summarize_validation_error(e.__cause__) if isinstance(
-                e.__cause__, ValidationError
-            ) else "respuesta no es JSON parseable"
+            error_msg = (
+                self._summarize_validation_error(e.__cause__)
+                if isinstance(e.__cause__, ValidationError)
+                else "respuesta no es JSON parseable"
+            )
             logger.warning("Stream LLM inválido (%s); reintento no-streaming", error_msg)
 
         retry_user = build_retry_user_prompt(accumulated, error_msg)

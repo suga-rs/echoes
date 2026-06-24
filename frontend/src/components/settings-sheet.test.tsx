@@ -17,7 +17,7 @@ describe("SettingsSheet", () => {
     const user = userEvent.setup();
     render(<SettingsSheet open onOpenChange={() => {}} />);
 
-    await user.click(screen.getByRole("button", { name: "Dislexia" }));
+    await user.click(screen.getByRole("button", { name: "Lexend" }));
 
     expect(useSettingsStore.getState().narrativaFont).toBe("dyslexic");
   });
