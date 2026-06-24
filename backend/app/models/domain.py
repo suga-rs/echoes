@@ -3,7 +3,7 @@
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class Genero(StrEnum):
@@ -65,6 +65,52 @@ class ResultadoTirada(StrEnum):
     FRACASO_CRITICO = "fracaso_critico"
 
 
+class BandaSeveridad(StrEnum):
+    """Banda de severidad de daño declarada por el narrador. El sistema mapea
+    cada banda a una FRACCIÓN de pv_max (ver app.services.vida); el narrador
+    nunca da un número de PV, igual que nunca da un DC en las tiradas."""
+
+    RASGUNO = "rasguno"
+    LEVE = "leve"
+    GRAVE = "grave"
+    SEVERO = "severo"
+    MORTAL = "mortal"
+
+
+class TipoCondicion(StrEnum):
+    ENVENENADO = "envenenado"
+    SANGRANDO = "sangrando"
+    ATURDIDO = "aturdido"
+    EXHAUSTO = "exhausto"
+
+
+class EfectoCondicion(StrEnum):
+    """Efectos mecánicos soportados en este hito. `desventaja` hace que la
+    resolución del d20 tire dos dados y se quede con el peor; `dano_por_turno`
+    descuenta PV al comienzo de cada turno mientras la condición esté activa."""
+
+    DESVENTAJA = "desventaja"
+    DANO_POR_TURNO = "dano_por_turno"
+
+
+class DuracionCondicion(StrEnum):
+    """Duraciones no numéricas. Una duración numérica (int de turnos) se
+    decrementa cada turno; estas persisten hasta que un evento las quite."""
+
+    HASTA_CURAR = "hasta_curar"
+    HASTA_EVENTO = "hasta_evento"
+
+
+class Condicion(BaseModel):
+    """Condición activa sobre el personaje: un tipo, su efecto mecánico y su
+    duración (int de turnos, o un sentinel no numérico)."""
+
+    tipo: TipoCondicion
+    efecto: EfectoCondicion
+    # int = cantidad de turnos restantes; DuracionCondicion = hasta evento/cura.
+    duracion: int | DuracionCondicion
+
+
 class Atributos(BaseModel):
     """Las seis habilidades clásicas (3-18). El modificador es el estándar de
     D&D: floor((score-10)/2). Las partidas previas a este cambio (sin el bloque)
@@ -110,11 +156,33 @@ class Personaje(BaseModel):
     # Ficha de seis atributos. Las partidas previas a este cambio (Cosmos
     # schemaless) deserializan con los seis en 10 (+0) y siguen jugables.
     atributos: Atributos = Field(default_factory=Atributos.neutral)
+    # Puntos de vida. pv_max se deriva de la constitución (ver app.services.vida);
+    # un valor 0 o ausente (partidas previas a este cambio) se rellena en
+    # _derivar_pv: pv_max desde la constitución y pv_actual a tope. El sistema es
+    # dueño de estos números; el narrador nunca emite PV crudos.
+    pv_max: int = 0
+    pv_actual: int = 0
+    # Condiciones activas (envenenado, sangrando, ...). Partidas previas
+    # deserializan con la lista vacía.
+    condiciones: list[Condicion] = Field(default_factory=list)
     # URL de la imagen de referencia canónica del personaje (retrato de cuerpo
     # entero, fondo neutro). Se genera una sola vez por partida y se reutiliza
     # como ancla visual en cada imagen de escena vía images.edit. None hasta que
     # se genera la primera imagen; partidas previas deserializan como None.
     referencia_visual_url: str | None = None
+
+    @model_validator(mode="after")
+    def _derivar_pv(self) -> "Personaje":
+        # Retrocompat: documentos sin PV (o con 0) derivan pv_max de la
+        # constitución y arrancan a tope. Un pv_actual ya persistido (> 0) se
+        # respeta. Import diferido para no acoplar el dominio a services.vida.
+        from app.services.vida import pv_max_de_constitucion
+
+        if self.pv_max <= 0:
+            self.pv_max = pv_max_de_constitucion(self.atributos.constitucion)
+        if self.pv_actual <= 0:
+            self.pv_actual = self.pv_max
+        return self
 
 
 class NPC(BaseModel):
@@ -216,6 +284,13 @@ class TurnoResponse(BaseModel):
     razon_fin: str | None = None
     # Tirada resuelta en este turno, o None si la acción no requirió un check.
     tirada: Tirada | None = None
+    # Estado de vida tras este turno y daño recibido en él (tick + golpe). Las
+    # partidas previas a este cambio igual reportan pv_max/pv_actual vía el
+    # default derivado en Personaje.
+    pv_actual: int = 0
+    pv_max: int = 0
+    condiciones: list[Condicion] = Field(default_factory=list)
+    dano_recibido: int = 0
 
 
 class StartResponse(BaseModel):
@@ -239,6 +314,9 @@ class StateResponse(BaseModel):
     objetivo: str
     eventos_clave: list[str]
     npcs_conocidos: list[str]
+    pv_actual: int = 0
+    pv_max: int = 0
+    condiciones: list[Condicion] = Field(default_factory=list)
 
 
 class ErrorResponse(BaseModel):

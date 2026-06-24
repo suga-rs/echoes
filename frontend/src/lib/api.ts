@@ -9,6 +9,7 @@ import type {
   ApiError,
   AuthResponse,
   AvatarResponse,
+  Condicion,
   EstadoPartida,
   Partida,
   PartidaResumen,
@@ -80,6 +81,10 @@ export interface TurnoStreamData {
   razon_fin: string | null;
   imagen_pendiente: boolean;
   tirada?: Tirada | null;
+  pv_actual?: number;
+  pv_max?: number;
+  condiciones?: Condicion[];
+  dano_recibido?: number;
 }
 
 export interface TurnoStreamHandlers {

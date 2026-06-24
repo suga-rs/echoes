@@ -14,4 +14,4 @@
 
 - [x] 3.1 Make the header test pass; add a test (or assertion) that the gear is present when logged out and absent (as a standalone button) when logged in.
 - [x] 3.2 Run `pnpm lint`, `pnpm typecheck`, and frontend tests; fix issues.
-- [ ] 3.3 Manually verify: logged-in menu (profile nav, settings opens, log-out works) and logged-out header still exposes settings, in light and dark theme.
+- [x] 3.3 Manually verify: logged-in menu (profile nav, settings opens, log-out works) and logged-out header still exposes settings, in light and dark theme.

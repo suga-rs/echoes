@@ -8,7 +8,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { Personaje, Tirada, TurnoHistorial } from "@/lib/types";
+import type { Condicion, Personaje, Tirada, TurnoHistorial } from "@/lib/types";
 
 /** Estado final que viaja junto al turno cuando la aventura termina. */
 interface EstadoFinal {
@@ -35,6 +35,13 @@ interface PartidaState {
   estado: "en_curso" | "finalizada" | null;
   final: "exito" | "fracaso" | "ambiguo" | null;
   razonFin: string | null;
+
+  // Vida y condiciones (Hito 2). Se actualizan en cada turno resuelto.
+  pvActual: number | null;
+  pvMax: number | null;
+  condiciones: Condicion[];
+  // PV perdidos en el último turno resuelto (para destacar el costo en la UI).
+  danoUltimoTurno: number;
 
   // Streaming
   isStreaming: boolean;
@@ -71,6 +78,13 @@ interface PartidaState {
     razonFin: string | null;
   }) => void;
   setInventarioYUbicacion: (inventario: string[], ubicacion: string) => void;
+  // Actualiza vida/condiciones tras un turno resuelto.
+  actualizarVida: (data: {
+    pvActual: number | null | undefined;
+    pvMax: number | null | undefined;
+    condiciones: Condicion[] | undefined;
+    danoRecibido?: number;
+  }) => void;
   establecerCodigo: (codigo: string) => void;
   resetear: () => void;
 
@@ -106,6 +120,10 @@ export const usePartidaStore = create<PartidaState>()(
       estado: null,
       final: null,
       razonFin: null,
+      pvActual: null,
+      pvMax: null,
+      condiciones: [],
+      danoUltimoTurno: 0,
       isStreaming: false,
       streamingNarrativa: null,
       imagenUltimoTurnoPendiente: false,
@@ -123,6 +141,10 @@ export const usePartidaStore = create<PartidaState>()(
           estado: "en_curso",
           final: null,
           razonFin: null,
+          pvActual: personaje.pv_actual ?? null,
+          pvMax: personaje.pv_max ?? null,
+          condiciones: personaje.condiciones ?? [],
+          danoUltimoTurno: 0,
         }),
 
       agregarTurno: (turno) =>
@@ -152,10 +174,22 @@ export const usePartidaStore = create<PartidaState>()(
           estado,
           final,
           razonFin,
+          pvActual: personaje.pv_actual ?? null,
+          pvMax: personaje.pv_max ?? null,
+          condiciones: personaje.condiciones ?? [],
+          danoUltimoTurno: 0,
         }),
 
       setInventarioYUbicacion: (inventario, ubicacion) =>
         set({ inventario, ubicacion }),
+
+      actualizarVida: ({ pvActual, pvMax, condiciones, danoRecibido = 0 }) =>
+        set((state) => ({
+          pvActual: pvActual ?? state.pvActual,
+          pvMax: pvMax ?? state.pvMax,
+          condiciones: condiciones ?? state.condiciones,
+          danoUltimoTurno: danoRecibido,
+        })),
 
       establecerCodigo: (codigo) => set({ codigoPartida: codigo }),
 
@@ -170,6 +204,10 @@ export const usePartidaStore = create<PartidaState>()(
           estado: null,
           final: null,
           razonFin: null,
+          pvActual: null,
+          pvMax: null,
+          condiciones: [],
+          danoUltimoTurno: 0,
           isStreaming: false,
           streamingNarrativa: null,
           imagenUltimoTurnoPendiente: false,

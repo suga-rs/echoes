@@ -9,7 +9,7 @@ from app.models.domain import Genero, Partida
 # SYSTEM_PROMPT_* o los schemas en llm_schema.py. Se loguea en cada llamada al
 # LLM y se persiste en la metadata de cada partida para poder correlacionar
 # calidad/fallos con la versión activa. Ver changelog en docs/prompts.md.
-PROMPT_VERSION = "3.1.0"
+PROMPT_VERSION = "3.2.0"
 
 SYSTEM_PROMPT_TURNO = """\
 Sos el narrador de una aventura de texto interactiva en español rioplatense. \
@@ -107,6 +107,33 @@ Ejemplos:
 Cuando declarás una tirada, tu narrativa de este turno describe SOLO la \
 preparación: el momento de tensión justo antes de que el dado decida. No narres \
 el resultado todavía; el sistema tira y te va a pedir que narres el desenlace.
+
+# CONSECUENCIAS FÍSICAS (consecuencia) — DAÑO, CONDICIONES, CURACIÓN
+
+El campo consecuencia es OBLIGATORIO y nullable. Lo usás cuando este turno tiene \
+un costo o un alivio físico para el personaje; si no, lo dejás en null.
+
+Es INDEPENDIENTE de requiere_tirada: una trampa que salta, veneno ambiental o un \
+golpe enemigo pueden dañar SIN tirada previa. NO declarás vos los puntos de vida: \
+elegís una BANDA de severidad y el sistema calcula el daño (igual que con el DC).
+
+- dano: la severidad del golpe de ESTE turno, o null si no hubo daño. Bandas: \
+rasguno (rozón), leve, grave, severo, mortal (un golpe letal, ya telegrafiado). \
+Subí la banda según lo peligroso de la situación. Ante una caída, herida o ataque \
+real, asigná dano; no narres heridas serias dejando dano en null.
+- condicion_aplicar: una condición nueva, o null. tipo (envenenado, sangrando, \
+aturdido, exhausto), efecto (desventaja = todas las tiradas salen peor mientras \
+dure; dano_por_turno = pierde vida cada turno) y duracion (un entero de turnos, o \
+"hasta_curar" / "hasta_evento"). Ej.: una mordida de víbora → {envenenado, \
+dano_por_turno, 3}; un golpe en la cabeza → {aturdido, desventaja, 2}.
+- condicion_quitar: el tipo de una condición que se cura/termina este turno, o null.
+- descanso: true si el personaje descansa y recupera vida (solo en un beat seguro, \
+nunca en pleno peligro). El sistema decide cuánta vida vuelve.
+- curar_pocion: el nombre EXACTO de una poción del inventario que el personaje \
+bebe para curarse este turno, o null. El sistema la consume del inventario.
+
+Si el personaje llega a 0 de vida, MUERE y la aventura termina en fracaso: reservá \
+mortal y el daño severo para desenlaces ya telegrafiados, no para sorpresas.
 
 # IMAGEN DE LA ESCENA (generar_imagen)
 
@@ -444,6 +471,7 @@ def build_turno_user_prompt(partida: Partida, accion_jugador: str) -> str:
     inventario = ", ".join(pj.inventario) if pj.inventario else "vacío"
     npcs = _format_npcs(ws.npcs)
     pistas = _format_lista(ws.pistas)
+    condiciones = _format_condiciones(pj.condiciones)
     resumen = ws.resumen_historia.strip() or "(todavía no hay resumen previo)"
 
     return f"""# CONTEXTO DE LA PARTIDA
@@ -459,6 +487,8 @@ Tensión actual (0-10): {ws.tension}
 
 Nombre: {pj.nombre}
 Descripción narrativa: {pj.descripcion_narrativa}
+Vida: {pj.pv_actual}/{pj.pv_max} PV
+Condiciones activas: {condiciones}
 Inventario: {inventario}
 
 # ESTADO DEL MUNDO
@@ -512,6 +542,15 @@ mostrá la consecuencia y dejá la historia en movimiento.
 
 Una muerte o pérdida terminal del objetivo SOLO es válida si ya venía \
 telegrafiada antes. Un fracaso_critico no equivale a muerte automática.
+
+# COSTO FÍSICO DEL DESENLACE (consecuencia)
+
+Si el desenlace lastima al personaje, cargalo en el campo consecuencia (mismo \
+campo del turno): elegís la BANDA de dano (nunca PV), podés aplicar una condición \
+o curar. Un fracaso o fracaso_critico peligroso suele cobrar dano y/o una \
+condición; un fracaso inofensivo puede dejar consecuencia en null. NUNCA narres \
+una herida sin reflejarla en consecuencia. Si el personaje llega a 0 PV muere, así \
+que reservá mortal/severo para desenlaces ya telegrafiados.
 
 # FORMATO Y ESTILO
 
@@ -602,3 +641,13 @@ def _format_npcs(npcs: list) -> str:
     if not npcs:
         return "(ninguno)"
     return "\n".join(f"- {n.nombre} (actitud: {n.actitud.value}): {n.descripcion}" for n in npcs)
+
+
+def _format_condiciones(condiciones: list) -> str:
+    if not condiciones:
+        return "ninguna"
+    partes = []
+    for c in condiciones:
+        dur = c.duracion if isinstance(c.duracion, int) else c.duracion.value
+        partes.append(f"{c.tipo.value} ({c.efecto.value}, dura: {dur})")
+    return ", ".join(partes)

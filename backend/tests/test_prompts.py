@@ -158,7 +158,7 @@ def test_system_prompt_fija_regla_de_idioma_bidireccional(prompt: str):
 def test_prompt_version_fue_bumpeada():
     """Pin de la versión activa: cambiar prompts/schema sin bumpear esto (y sin
     agregar fila al changelog en docs/prompts.md) rompe este test a propósito."""
-    assert PROMPT_VERSION == "3.1.0"
+    assert PROMPT_VERSION == "3.2.0"
 
 
 # --- tiradas: system prompt del turno y prompt de resolución (fase 2) --------

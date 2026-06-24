@@ -44,6 +44,15 @@ export interface Tirada {
   resultado: ResultadoTirada;
 }
 
+export type EfectoCondicion = "desventaja" | "dano_por_turno";
+
+export interface Condicion {
+  tipo: string;
+  efecto: EfectoCondicion;
+  // Entero de turnos restantes, o "hasta_curar" / "hasta_evento".
+  duracion: number | string;
+}
+
 export interface Personaje {
   nombre: string;
   descripcion_narrativa: string;
@@ -51,6 +60,10 @@ export interface Personaje {
   inventario: string[];
   // Partidas previas al sistema de tiradas no traen atributos.
   atributos?: Atributos;
+  // Puntos de vida y condiciones (Hito 2). Partidas previas deserializan a tope.
+  pv_actual?: number;
+  pv_max?: number;
+  condiciones?: Condicion[];
 }
 
 export interface TurnoResponse {
@@ -62,6 +75,10 @@ export interface TurnoResponse {
   final: TipoFinal | null;
   razon_fin: string | null;
   tirada?: Tirada | null;
+  pv_actual?: number;
+  pv_max?: number;
+  condiciones?: Condicion[];
+  dano_recibido?: number;
 }
 
 export interface StartResponse {
@@ -81,6 +98,9 @@ export interface StateResponse {
   objetivo: string;
   eventos_clave: string[];
   npcs_conocidos: string[];
+  pv_actual?: number;
+  pv_max?: number;
+  condiciones?: Condicion[];
 }
 
 export interface TurnoHistorial {

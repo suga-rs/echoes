@@ -28,6 +28,10 @@ from app.models.domain import (
     Actitud,
     Atributos,
     Banda,
+    BandaSeveridad,
+    Condicion,
+    DuracionCondicion,
+    EfectoCondicion,
     EstadoPartida,
     FaseNarrativa,
     Genero,
@@ -37,6 +41,7 @@ from app.models.domain import (
     PartidaResumen,
     Personaje,
     StartResponse,
+    TipoCondicion,
     TipoFinal,
     Tirada,
     TurnoHistorial,
@@ -46,13 +51,15 @@ from app.models.domain import (
 from app.models.llm_schema import (
     CREACION_JSON_SCHEMA,
     TURNO_JSON_SCHEMA,
+    CondicionAplicarLLM,
+    ConsecuenciaLLM,
     CreacionLLMResponse,
     RequiereTirada,
     TurnoLLMResponse,
 )
 from app.repositories.imagen_repo import ImagenRepository
 from app.repositories.partida_repo import PartidaRepository
-from app.services import dados
+from app.services import dados, vida
 from app.services.foundry_client import FoundryClient
 from app.services.prompts import (
     PROMPT_VERSION,
@@ -210,6 +217,11 @@ class PartidaService:
             PROMPT_VERSION,
         )
 
+        # Al comenzar el turno, las condiciones activas (veneno, sangrado)
+        # tickean su daño y decrementan su duración. El chequeo de muerte va
+        # al final, junto con el daño que declare el narrador este turno.
+        dano_turno = self._tick_condiciones_inicio(partida)
+
         system = SYSTEM_PROMPT_TURNO
         user = build_turno_user_prompt(partida, accion)
         turno_llm = self._invocar_llm_con_reintento(
@@ -229,11 +241,15 @@ class PartidaService:
 
         nuevo_turno_num = partida.metadata.turno_actual + 1
         self._aplicar_actualizaciones(partida, turno_llm)
+        # Daño/condiciones/curación declarados por el narrador este turno.
+        dano_turno += self._aplicar_consecuencia(partida, turno_llm.consecuencia)
+        # Muerte por 0 PV (tick o golpe): termina en fracaso reusando el path de fin.
+        murio = self._chequear_muerte(partida)
 
         # La imagen del primer y último turno se genera automáticamente; el resto
         # las pide el jugador a demanda vía generar_imagen_turno.
         imagen_url = None
-        es_final = turno_llm.estado_aventura.tipo == "finalizada"
+        es_final = murio or turno_llm.estado_aventura.tipo == "finalizada"
         descripcion_escena = turno_llm.generar_imagen.descripcion_escena_en
         if es_final and descripcion_escena:
             imagen_url = self._generar_imagen_segura(
@@ -279,6 +295,10 @@ class PartidaService:
             final=partida.metadata.final,
             razon_fin=partida.metadata.razon_fin,
             tirada=tirada,
+            pv_actual=partida.personaje.pv_actual,
+            pv_max=partida.personaje.pv_max,
+            condiciones=list(partida.personaje.condiciones),
+            dano_recibido=dano_turno,
         )
 
     def get_partida(self, codigo_partida: str) -> Partida:
@@ -406,7 +426,10 @@ class PartidaService:
         banda = Banda(requiere.banda)
         dc = dados.dc_de_banda(banda)
         modificador = partida.personaje.atributos.modificador(habilidad)
-        d20 = dados.tirar_d20(self._rng)
+        # Una condición activa con efecto desventaja hace tirar 2d20 y quedarse
+        # con el peor (ver design.md D3). El dado sigue siendo server-side.
+        desventaja = vida.tiene_desventaja(partida.personaje.condiciones)
+        d20 = dados.tirar_d20_con_desventaja(self._rng, desventaja=desventaja)
         resultado = dados.clasificar_tirada(d20=d20, modificador_total=modificador, dc=dc)
         return Tirada(
             habilidad=habilidad,
@@ -467,6 +490,93 @@ class PartidaService:
         ws.tension = max(0, min(10, turno_llm.arco.tension))
         if turno_llm.resumen_historia:
             ws.resumen_historia = turno_llm.resumen_historia
+
+    # --- HP / condiciones (Hito 2) ------------------------------------------
+
+    def _tick_condiciones_inicio(self, partida: Partida) -> int:
+        """Al comenzar el turno: aplica el daño por turno de las condiciones
+        activas y decrementa/expira sus duraciones. Devuelve el daño infligido."""
+        pj = partida.personaje
+        nuevas, nuevo_pv, dano = vida.tick_condiciones(
+            pj.condiciones, pv_max=pj.pv_max, pv_actual=pj.pv_actual
+        )
+        pj.condiciones = nuevas
+        pj.pv_actual = nuevo_pv
+        return dano
+
+    def _construir_condicion(self, c: CondicionAplicarLLM) -> Condicion | None:
+        """Convierte la condición declarada por el LLM al modelo de dominio.
+        Las enums vienen validadas por el schema, pero somos defensivos."""
+        try:
+            tipo = TipoCondicion(c.tipo)
+            efecto = EfectoCondicion(c.efecto)
+        except ValueError:
+            return None
+        duracion: int | DuracionCondicion
+        if isinstance(c.duracion, int):
+            duracion = c.duracion
+        else:
+            try:
+                duracion = DuracionCondicion(c.duracion)
+            except ValueError:
+                return None
+        return Condicion(tipo=tipo, efecto=efecto, duracion=duracion)
+
+    def _aplicar_consecuencia(self, partida: Partida, consecuencia: ConsecuenciaLLM | None) -> int:
+        """Aplica la consecuencia física declarada (daño por banda, condición a
+        aplicar/quitar, descanso, poción) sobre el personaje. El sistema es dueño
+        del número: el LLM solo declaró la banda/intención. Devuelve el daño
+        infligido este turno (para surfacearlo al jugador)."""
+        if consecuencia is None:
+            return 0
+        pj = partida.personaje
+        dano = 0
+
+        if consecuencia.dano:
+            with contextlib.suppress(ValueError):
+                banda = BandaSeveridad(consecuencia.dano)
+                dano = vida.calcular_dano(pj.pv_max, banda)
+                pj.pv_actual = vida.aplicar_dano(pj.pv_actual, dano)
+
+        if consecuencia.condicion_quitar:
+            with contextlib.suppress(ValueError):
+                quitar = TipoCondicion(consecuencia.condicion_quitar)
+                pj.condiciones = [c for c in pj.condiciones if c.tipo != quitar]
+
+        if consecuencia.condicion_aplicar:
+            cond = self._construir_condicion(consecuencia.condicion_aplicar)
+            if cond is not None:
+                # Una sola condición por tipo: la nueva reemplaza a la previa.
+                pj.condiciones = [c for c in pj.condiciones if c.tipo != cond.tipo]
+                pj.condiciones.append(cond)
+
+        if consecuencia.descanso:
+            pj.pv_actual = vida.aplicar_curacion(
+                pv_actual=pj.pv_actual,
+                pv_max=pj.pv_max,
+                cantidad=vida.curacion_descanso(pj.pv_max),
+            )
+
+        if consecuencia.curar_pocion and consecuencia.curar_pocion in pj.inventario:
+            pj.inventario.remove(consecuencia.curar_pocion)
+            pj.pv_actual = vida.aplicar_curacion(
+                pv_actual=pj.pv_actual,
+                pv_max=pj.pv_max,
+                cantidad=vida.curacion_pocion(pj.pv_max),
+            )
+
+        return dano
+
+    def _chequear_muerte(self, partida: Partida) -> bool:
+        """Si el personaje llegó a 0 PV, termina la partida en fracaso reusando
+        el path de fin existente. Devuelve True si murió."""
+        if partida.personaje.pv_actual > 0:
+            return False
+        partida.metadata.estado = EstadoPartida.FINALIZADA
+        partida.metadata.final = TipoFinal.FRACASO
+        if not partida.metadata.razon_fin:
+            partida.metadata.razon_fin = f"{partida.personaje.nombre} sucumbió a sus heridas."
+        return True
 
     def _generar_imagen_segura(
         self,
@@ -685,6 +795,10 @@ class PartidaService:
             PROMPT_VERSION,
         )
 
+        # Al comenzar el turno, las condiciones activas tickean daño/duración.
+        # El chequeo de muerte va al final, con el daño que declare el narrador.
+        dano_turno = self._tick_condiciones_inicio(partida)
+
         # Fase 1: streameamos el turno. Si el narrador declara una tirada, esta
         # narración es la preparación; tras tirar, la fase 2 streamea el desenlace
         # y reemplaza al turno autoritativo. El frontend resetea la narrativa al
@@ -712,8 +826,10 @@ class PartidaService:
             turno_llm = await self._parse_stream_con_reintento(SYSTEM_PROMPT_RESOLUCION, sink2[0])
 
         nuevo_turno_num = partida.metadata.turno_actual + 1
-        es_final = turno_llm.estado_aventura.tipo == "finalizada"
         self._aplicar_actualizaciones(partida, turno_llm)
+        dano_turno += self._aplicar_consecuencia(partida, turno_llm.consecuencia)
+        murio = self._chequear_muerte(partida)
+        es_final = murio or turno_llm.estado_aventura.tipo == "finalizada"
 
         # Persist turn (without image URL yet)
         descripcion_escena = turno_llm.generar_imagen.descripcion_escena_en
@@ -730,7 +846,9 @@ class PartidaService:
         partida.metadata.turno_actual = nuevo_turno_num
         partida.metadata.actualizada_en = datetime.now(UTC)
 
-        if es_final:
+        # La muerte mecánica (murio) ya marcó FINALIZADA/FRACASO en _chequear_muerte;
+        # acá solo aplicamos el fin DECLARADO por el narrador para no pisar la razón.
+        if turno_llm.estado_aventura.tipo == "finalizada":
             partida.metadata.estado = EstadoPartida.FINALIZADA
             if turno_llm.estado_aventura.final:
                 with contextlib.suppress(ValueError):
@@ -753,6 +871,10 @@ class PartidaService:
                 "razon_fin": partida.metadata.razon_fin,
                 "imagen_pendiente": imagen_solicitada,
                 "tirada": _tirada_a_dict(tirada) if tirada else None,
+                "pv_actual": partida.personaje.pv_actual,
+                "pv_max": partida.personaje.pv_max,
+                "condiciones": [_condicion_a_dict(c) for c in partida.personaje.condiciones],
+                "dano_recibido": dano_turno,
             },
         )
 
@@ -793,6 +915,15 @@ def _tirada_a_dict(tirada: Tirada) -> dict:
         "modificador": tirada.modificador,
         "total": tirada.total,
         "resultado": tirada.resultado.value,
+    }
+
+
+def _condicion_a_dict(c: Condicion) -> dict:
+    """Serializa una Condicion para el evento SSE `turno`."""
+    return {
+        "tipo": c.tipo.value,
+        "efecto": c.efecto.value,
+        "duracion": c.duracion if isinstance(c.duracion, int) else c.duracion.value,
     }
 
 

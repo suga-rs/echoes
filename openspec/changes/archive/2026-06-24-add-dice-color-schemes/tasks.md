@@ -23,4 +23,4 @@
 
 - [x] 4.1 Run `pnpm typecheck` and `pnpm lint` clean
 - [x] 4.2 Run `pnpm test` — all suites green
-- [ ] 4.3 Manually verify in the app: each scheme changes body/number/finish, numbers stay legible, the result glow (crit gold / success emerald / fail gray / crit-fail red) is unchanged across schemes, and the choice survives a reload
+- [x] 4.3 Manually verify in the app: each scheme changes body/number/finish, numbers stay legible, the result glow (crit gold / success emerald / fail gray / crit-fail red) is unchanged across schemes, and the choice survives a reload

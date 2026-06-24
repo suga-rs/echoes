@@ -53,6 +53,41 @@ def test_personaje_legacy_sin_atributos_default_neutral():
     assert pj.atributos.modificador(Habilidad.FUERZA) == 0
 
 
+# --- Retrocompatibilidad: Personaje legacy sin PV ni condiciones -------------
+
+
+def test_personaje_legacy_sin_pv_arranca_a_tope_sin_condiciones():
+    from app.services.vida import pv_max_de_constitucion
+
+    # Documento previo a HP/condiciones: sin pv_max/pv_actual/condiciones.
+    pj = Personaje.model_validate(
+        {
+            "nombre": "Lyra",
+            "descripcion_narrativa": "Arqueóloga escéptica.",
+            "descripcion_visual_en": "Woman around 40, dark hair.",
+        }
+    )
+    # Atributos default neutral → constitución 10 → pv_max base.
+    assert pj.pv_max == pv_max_de_constitucion(10)
+    assert pj.pv_actual == pj.pv_max
+    assert pj.condiciones == []
+
+
+def test_personaje_respeta_pv_actual_persistido():
+    # Una partida en curso guardó pv_actual reducido: no debe resetearse.
+    pj = Personaje.model_validate(
+        {
+            "nombre": "Lyra",
+            "descripcion_narrativa": "Herida.",
+            "descripcion_visual_en": "Woman around 40, dark hair.",
+            "pv_max": 40,
+            "pv_actual": 12,
+        }
+    )
+    assert pj.pv_max == 40
+    assert pj.pv_actual == 12
+
+
 # --- Tirada persistida en el turno -------------------------------------------
 
 

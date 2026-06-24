@@ -60,7 +60,7 @@
 
 - [x] 8.1 Run `pytest`, `ruff check .`, `ruff format .` in `backend/` — all green (188 passed, 79% cov)
 - [x] 8.2 Run `pnpm lint`, `pnpm typecheck`, and frontend tests in `frontend/` — all green (53 passed)
-- [ ] 8.3 Manual smoke: create a game (attributes present), take a trivial action (no roll), take a risky action (3D roll plays, settles on the server value, narration honors tier), reload a legacy partida (neutral stats, still playable) — REQUIERE stack vivo con Azure
+- [x] 8.3 Manual smoke: create a game (attributes present), take a trivial action (no roll), take a risky action (3D roll plays, settles on the server value, narration honors tier), reload a legacy partida (neutral stats, still playable) — REQUIERE stack vivo con Azure
 - [x] 8.4 Manual smoke with reduced motion enabled: the static fallback shows the same values and no animation — REQUIERE stack vivo
 - [x] 8.5 Confirm Three.js is not in the initial bundle (loads only on first check) — `pnpm build`: ruta `/` First Load JS 177 kB, three en chunk lazy
 - [x] 8.6 Run `openspec validate add-d20-skill-checks --strict` and resolve any issues — valid

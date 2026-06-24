@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, Package, PanelLeft, Home, LogIn, LogOut, User, Settings, ChevronDown } from "lucide-react";
+import { Plus, Package, PanelLeft, Home, LogIn, LogOut, User, Settings, ChevronDown, Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,6 +24,7 @@ import { useAuthStore } from "@/store/auth-store";
 import { AuthModal } from "./auth-modal";
 import { SettingsSheet } from "./settings-sheet";
 import { FichaAtributos } from "./ficha-atributos";
+import { BarraVida } from "./barra-vida";
 
 const capitalizar = (texto: string) =>
   texto.charAt(0).toUpperCase() + texto.slice(1);
@@ -42,6 +43,10 @@ export function Header({ onNuevaPartida, onToggleSidebar, onVolverAlInicio }: He
   const objetivo = usePartidaStore((s) => s.objetivo);
   const personaje = usePartidaStore((s) => s.personaje);
   const inventario = usePartidaStore((s) => s.inventario);
+  const pvActual = usePartidaStore((s) => s.pvActual);
+  const pvMax = usePartidaStore((s) => s.pvMax);
+  const condiciones = usePartidaStore((s) => s.condiciones);
+  const danoUltimoTurno = usePartidaStore((s) => s.danoUltimoTurno);
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const queryClient = useQueryClient();
@@ -77,6 +82,24 @@ export function Header({ onNuevaPartida, onToggleSidebar, onVolverAlInicio }: He
             <div className="text-sm font-semibold">Echoes</div>
           )}
         </div>
+
+        {codigo && pvActual !== null && pvMax !== null && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowInventario(true)}
+            title="Ver ficha"
+            className={pvActual <= pvMax * 0.25 ? "text-red-600" : undefined}
+          >
+            <Heart className="h-4 w-4" />
+            <span className="ml-1 font-mono text-xs">
+              {pvActual}/{pvMax}
+            </span>
+            {condiciones.length > 0 && (
+              <span className="ml-1 h-1.5 w-1.5 rounded-full bg-red-600" aria-hidden />
+            )}
+          </Button>
+        )}
 
         {codigo && (
           <Button
@@ -173,6 +196,16 @@ export function Header({ onNuevaPartida, onToggleSidebar, onVolverAlInicio }: He
               {personaje?.descripcion_narrativa}
             </DialogDescription>
           </DialogHeader>
+          {pvActual !== null && pvMax !== null && (
+            <div className="mb-3">
+              <BarraVida
+                pvActual={pvActual}
+                pvMax={pvMax}
+                condiciones={condiciones}
+                danoUltimoTurno={danoUltimoTurno}
+              />
+            </div>
+          )}
           {personaje?.atributos && (
             <div className="mb-3">
               <div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">

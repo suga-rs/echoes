@@ -63,6 +63,8 @@ def fake_turno_llm_response(
         "resumen_historia": resumen_historia,
         # Requerido pero nullable: el modelo decide conscientemente null vs tirada.
         "requiere_tirada": None,
+        # Requerido pero nullable: null = el turno no tuvo costo físico.
+        "consecuencia": None,
     }
 
 

@@ -192,6 +192,92 @@ def test_turno_requiere_tirada_invalida_falla(tirada: dict):
         validate(payload, TURNO_JSON_SCHEMA)
 
 
+# ----------------------------------------------------- TURNO: consecuencia (HP/condiciones)
+
+_CONSECUENCIA_VALIDA = {
+    "dano": "grave",
+    "condicion_aplicar": {
+        "tipo": "envenenado",
+        "efecto": "dano_por_turno",
+        "duracion": 3,
+    },
+    "condicion_quitar": None,
+    "descanso": False,
+    "curar_pocion": None,
+}
+
+
+def test_turno_consecuencia_null_es_valido():
+    payload = fake_turno_llm_response()
+    assert payload["consecuencia"] is None
+    validate(payload, TURNO_JSON_SCHEMA)
+    assert TurnoLLMResponse.model_validate(payload).consecuencia is None
+
+
+def test_turno_omitir_consecuencia_falla():
+    # Requerido aunque nullable: igual que requiere_tirada, su presencia es la
+    # palanca para que el modelo lo decida conscientemente.
+    with pytest.raises(ValidationError):
+        validate(_sin(fake_turno_llm_response(), ["consecuencia"]), TURNO_JSON_SCHEMA)
+
+
+def test_turno_con_consecuencia_valida():
+    payload = _con(fake_turno_llm_response(), ["consecuencia"], _CONSECUENCIA_VALIDA)
+    validate(payload, TURNO_JSON_SCHEMA)
+    modelo = TurnoLLMResponse.model_validate(payload)
+    assert modelo.consecuencia is not None
+    assert modelo.consecuencia.dano == "grave"
+    assert modelo.consecuencia.condicion_aplicar.efecto == "dano_por_turno"
+
+
+def test_turno_consecuencia_duracion_sentinel_valida():
+    cons = {**_CONSECUENCIA_VALIDA}
+    cons["condicion_aplicar"] = {
+        "tipo": "aturdido",
+        "efecto": "desventaja",
+        "duracion": "hasta_curar",
+    }
+    payload = _con(fake_turno_llm_response(), ["consecuencia"], cons)
+    validate(payload, TURNO_JSON_SCHEMA)
+
+
+@pytest.mark.parametrize(
+    "consecuencia",
+    [
+        pytest.param({**_CONSECUENCIA_VALIDA, "dano": "letal"}, id="banda-severidad-invalida"),
+        pytest.param(_sin(_CONSECUENCIA_VALIDA, ["descanso"]), id="falta-descanso"),
+        pytest.param({**_CONSECUENCIA_VALIDA, "foo": "bar"}, id="clave-extra"),
+        pytest.param(
+            {
+                **_CONSECUENCIA_VALIDA,
+                "condicion_aplicar": {
+                    "tipo": "envenenado",
+                    "efecto": "fuego",
+                    "duracion": 3,
+                },
+            },
+            id="efecto-invalido",
+        ),
+        pytest.param(
+            {
+                **_CONSECUENCIA_VALIDA,
+                "condicion_aplicar": {
+                    "tipo": "envenenado",
+                    "efecto": "dano_por_turno",
+                    "duracion": "para_siempre",
+                },
+            },
+            id="duracion-sentinel-invalido",
+        ),
+        pytest.param({**_CONSECUENCIA_VALIDA, "condicion_quitar": "maldito"}, id="quitar-invalido"),
+    ],
+)
+def test_turno_consecuencia_invalida_falla(consecuencia: dict):
+    payload = _con(fake_turno_llm_response(), ["consecuencia"], consecuencia)
+    with pytest.raises(ValidationError):
+        validate(payload, TURNO_JSON_SCHEMA)
+
+
 # --------------------------------------------------------------------------- CREACION
 
 

@@ -33,4 +33,4 @@
 - [x] 6.1 Confirm reduced motion is ignored — the full throw always plays on activation
 - [x] 6.2 Ensure three.js resources (geometry, material, textures, renderer) are still disposed on unmount
 - [x] 6.3 Run `pnpm typecheck`, `pnpm lint`, and the dice tests; all green
-- [ ] 6.4 Manually tune restitution `e` and per-phase durations against the live canvas (total ~2–2.5s, in-frame, satisfying bounce)
+- [x] 6.4 Manually tune restitution `e` and per-phase durations against the live canvas (total ~2–2.5s, in-frame, satisfying bounce)

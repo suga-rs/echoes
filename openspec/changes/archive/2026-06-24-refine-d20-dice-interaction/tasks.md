@@ -9,7 +9,7 @@
 - [x] 2.1 Generate a `CanvasTexture` per number 1–20 (small canvas with the digit) in `dice-3d-canvas.tsx`.
 - [x] 2.2 Add 20 textured planes positioned at each face centroid, oriented along the face normal, parented to the die mesh so they tumble with it.
 - [x] 2.3 Dispose the per-face textures/planes on unmount alongside geometry/material.
-- [ ] 2.4 (Optional polish) Add a per-face in-plane roll correction so the settled/idle number reads upright.
+- [x] 2.4 (Optional polish) Add a per-face in-plane roll correction so the settled/idle number reads upright.
 
 ## 3. Player-initiated roll state machine
 

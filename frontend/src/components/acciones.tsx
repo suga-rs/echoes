@@ -24,6 +24,7 @@ export function Acciones({ opciones }: AccionesProps) {
   const iniciarTirada = usePartidaStore((s) => s.iniciarTirada);
   const finalizarStreaming = usePartidaStore((s) => s.finalizarStreaming);
   const actualizarImagenTurno = usePartidaStore((s) => s.actualizarImagenTurno);
+  const actualizarVida = usePartidaStore((s) => s.actualizarVida);
   const cancelarStreaming = usePartidaStore((s) => s.cancelarStreaming);
 
   const enviarAccion = async (accion: string) => {
@@ -42,6 +43,12 @@ export function Acciones({ opciones }: AccionesProps) {
 
       onTurno: (data) => {
         turnoNum = data.turno;
+        actualizarVida({
+          pvActual: data.pv_actual,
+          pvMax: data.pv_max,
+          condiciones: data.condiciones,
+          danoRecibido: data.dano_recibido ?? 0,
+        });
         finalizarStreaming(
           {
             turno: data.turno,

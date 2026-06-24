@@ -14,6 +14,7 @@ from app.services.dados import (
     dc_de_banda,
     modificador,
     tirar_d20,
+    tirar_d20_con_desventaja,
 )
 
 # --- 1.1 band → DC -----------------------------------------------------------
@@ -45,6 +46,32 @@ def test_tirar_d20_en_rango():
 def test_tirar_d20_determinista_bajo_semilla():
     a = tirar_d20(random.Random(42))
     b = tirar_d20(random.Random(42))
+    assert a == b
+
+
+# --- desventaja: 2d20 y se queda con el peor ---------------------------------
+
+
+def test_sin_desventaja_tira_un_solo_d20():
+    # Sin desventaja consume una sola tirada: igual secuencia que tirar_d20.
+    esperado = tirar_d20(random.Random(7))
+    obtenido = tirar_d20_con_desventaja(random.Random(7), desventaja=False)
+    assert obtenido == esperado
+
+
+def test_desventaja_se_queda_con_el_peor():
+    # Con la misma semilla, los dos primeros draws son los dos d20; el resultado
+    # es el mínimo de ambos.
+    rng = random.Random(7)
+    d1 = tirar_d20(rng)
+    d2 = tirar_d20(rng)
+    obtenido = tirar_d20_con_desventaja(random.Random(7), desventaja=True)
+    assert obtenido == min(d1, d2)
+
+
+def test_desventaja_determinista_bajo_semilla():
+    a = tirar_d20_con_desventaja(random.Random(99), desventaja=True)
+    b = tirar_d20_con_desventaja(random.Random(99), desventaja=True)
     assert a == b
 
 

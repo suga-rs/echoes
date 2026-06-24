@@ -15,6 +15,7 @@ TURNO_JSON_SCHEMA: dict[str, Any] = {
         "arco",
         "resumen_historia",
         "requiere_tirada",
+        "consecuencia",
     ],
     "additionalProperties": False,
     "properties": {
@@ -143,6 +144,68 @@ TURNO_JSON_SCHEMA: dict[str, Any] = {
                             ]
                         },
                         "banda": {"enum": ["trivial", "facil", "media", "dificil", "heroica"]},
+                    },
+                },
+            ]
+        },
+        # Consecuencia física del turno: daño y/o condición que el sistema aplica.
+        # Es INDEPENDIENTE de requiere_tirada: una trampa o veneno ambiental puede
+        # dañar sin tirada previa, y un fracaso puede colgar un costo. El narrador
+        # declara la BANDA de severidad (nunca PV crudos) y la intención de cura;
+        # el sistema es dueño del número. null = el turno no tuvo costo físico.
+        "consecuencia": {
+            "oneOf": [
+                {"type": "null"},
+                {
+                    "type": "object",
+                    "required": [
+                        "dano",
+                        "condicion_aplicar",
+                        "condicion_quitar",
+                        "descanso",
+                        "curar_pocion",
+                    ],
+                    "additionalProperties": False,
+                    "properties": {
+                        "dano": {"enum": ["rasguno", "leve", "grave", "severo", "mortal", None]},
+                        "condicion_aplicar": {
+                            "oneOf": [
+                                {"type": "null"},
+                                {
+                                    "type": "object",
+                                    "required": ["tipo", "efecto", "duracion"],
+                                    "additionalProperties": False,
+                                    "properties": {
+                                        "tipo": {
+                                            "enum": [
+                                                "envenenado",
+                                                "sangrando",
+                                                "aturdido",
+                                                "exhausto",
+                                            ]
+                                        },
+                                        "efecto": {"enum": ["desventaja", "dano_por_turno"]},
+                                        "duracion": {
+                                            "oneOf": [
+                                                {"type": "integer", "minimum": 1, "maximum": 10},
+                                                {"enum": ["hasta_curar", "hasta_evento"]},
+                                            ]
+                                        },
+                                    },
+                                },
+                            ]
+                        },
+                        "condicion_quitar": {
+                            "enum": [
+                                "envenenado",
+                                "sangrando",
+                                "aturdido",
+                                "exhausto",
+                                None,
+                            ]
+                        },
+                        "descanso": {"type": "boolean"},
+                        "curar_pocion": {"type": ["string", "null"]},
                     },
                 },
             ]
@@ -277,6 +340,20 @@ class RequiereTirada(BaseModel):
     banda: str
 
 
+class CondicionAplicarLLM(BaseModel):
+    tipo: str
+    efecto: str
+    duracion: int | str
+
+
+class ConsecuenciaLLM(BaseModel):
+    dano: str | None = None
+    condicion_aplicar: CondicionAplicarLLM | None = None
+    condicion_quitar: str | None = None
+    descanso: bool = False
+    curar_pocion: str | None = None
+
+
 class TurnoLLMResponse(BaseModel):
     narrativa: str
     opciones: list[str]
@@ -286,6 +363,7 @@ class TurnoLLMResponse(BaseModel):
     arco: ArcoLLM
     resumen_historia: str
     requiere_tirada: RequiereTirada | None = None
+    consecuencia: ConsecuenciaLLM | None = None
 
 
 class AtributosLLM(BaseModel):

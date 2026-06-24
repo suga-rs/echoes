@@ -37,6 +37,19 @@ def tirar_d20(rng: random.Random | None = None) -> int:
     return rng.randint(1, 20)
 
 
+def tirar_d20_con_desventaja(rng: random.Random | None = None, *, desventaja: bool = False) -> int:
+    """Tira un d20, o el PEOR de dos d20 bajo desventaja (una condición activa).
+    Sin desventaja consume exactamente una tirada (misma secuencia de azar que
+    `tirar_d20`), así la determinancia del path sin condiciones no cambia. El
+    valor devuelto es el dado que se evalúa para nat-20/nat-1 y total vs DC."""
+    rng = rng or random.Random()
+    primero = tirar_d20(rng)
+    if not desventaja:
+        return primero
+    segundo = tirar_d20(rng)
+    return min(primero, segundo)
+
+
 def clasificar_tirada(*, d20: int, modificador_total: int, dc: int) -> ResultadoTirada:
     """Clasifica el resultado. Un 20 natural siempre es éxito crítico y un 1
     natural siempre es fracaso crítico, independientes del modificador y el DC.
