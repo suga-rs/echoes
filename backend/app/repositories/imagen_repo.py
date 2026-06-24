@@ -43,12 +43,12 @@ class ImagenRepository:
     def subir_referencia(self, codigo_partida: str, contenido: bytes) -> str:
         # Nombre fijo por partida + overwrite: la referencia canónica del
         # personaje se genera una sola vez y se reutiliza en cada imagen.
-        nombre = f"{codigo_partida}/referencia.jpg"
+        nombre = f"{codigo_partida}/referencia.png"
         blob = self._container.get_blob_client(nombre)
         blob.upload_blob(
             contenido,
             overwrite=True,
-            content_settings=ContentSettings(content_type="image/jpeg"),
+            content_settings=ContentSettings(content_type="image/png"),
         )
         url = blob.url
         logger.info("Referencia de personaje subida: %s", url)

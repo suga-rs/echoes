@@ -520,7 +520,10 @@ class PartidaService:
 
         try:
             prompt = build_reference_prompt(personaje.descripcion_visual_en, genero)
-            png = self.foundry.generar_imagen(prompt)
+            # PNG sin pérdida: la referencia se re-inyecta en images.edit en cada
+            # escena, así que evitamos comprimirla en JPEG para no acumular
+            # artefactos en todas las imágenes ancladas a ella.
+            png = self.foundry.generar_imagen(prompt, output_format="png")
             personaje.referencia_visual_url = self.imagenes.subir_referencia(codigo_partida, png)
             return png
         except Exception:
