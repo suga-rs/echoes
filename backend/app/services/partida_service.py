@@ -608,6 +608,45 @@ class PartidaService:
 
         return TurnoLLMResponse.model_validate(parsed)
 
+    async def _parse_stream_con_reintento(
+        self, system_prompt: str, accumulated: str
+    ) -> TurnoLLMResponse:
+        """Parsea el JSON streameado; si no respeta el schema, hace UN reintento
+        no-streaming alimentando el error (igual que la ruta no-streaming). Evita
+        que una sola violación de schema —p. ej. una opción demasiado larga— corte
+        el turno y cierre el modal del dado en el cliente."""
+        try:
+            return self._parse_stream_turno(accumulated)
+        except RespuestaLLMInvalidaError as e:
+            error_msg = self._summarize_validation_error(e.__cause__) if isinstance(
+                e.__cause__, ValidationError
+            ) else "respuesta no es JSON parseable"
+            logger.warning("Stream LLM inválido (%s); reintento no-streaming", error_msg)
+
+        retry_user = build_retry_user_prompt(accumulated, error_msg)
+        raw2, parsed2 = await asyncio.to_thread(
+            self.foundry.chat_json_raw, system_prompt, retry_user
+        )
+
+        if parsed2 is None:
+            telemetry.record_llm_error(operation="chat_stream", tipo="json")
+            raise RespuestaLLMInvalidaError(
+                "Stream LLM devolvió JSON inválido en dos intentos",
+                detalles={"ultimo_intento": raw2[:500]},
+            )
+
+        try:
+            validate(parsed2, TURNO_JSON_SCHEMA)
+        except ValidationError as e:
+            telemetry.record_llm_error(operation="chat_stream", tipo="schema")
+            raise RespuestaLLMInvalidaError(
+                f"Stream LLM no respetó el schema tras reintento: "
+                f"{self._summarize_validation_error(e)}",
+                detalles={"ultimo_intento": raw2[:500]},
+            ) from e
+
+        return TurnoLLMResponse.model_validate(parsed2)
+
     async def avanzar_turno_stream(
         self, codigo_partida: str, accion: str
     ) -> AsyncGenerator[str, None]:
@@ -645,21 +684,27 @@ class PartidaService:
         # narración es la preparación; tras tirar, la fase 2 streamea el desenlace
         # y reemplaza al turno autoritativo. El frontend resetea la narrativa al
         # recibir el evento `tirada`.
+        # El turno se entrega de forma atómica: NO emitimos los tokens parciales.
+        # Cuando hay tirada, la fase 1 es preparación que se descarta, y mostrarla
+        # antes de la tirada confundía (el narrador "cambiaba" al resolver). El
+        # cliente revela la narrativa final del turno una sola vez.
         user = build_turno_user_prompt(partida, accion)
         sink: list[str] = []
-        async for text in self._stream_narrativa(SYSTEM_PROMPT_TURNO, user, sink):
-            yield _sse("token", {"content": text})
-        turno_llm = self._parse_stream_turno(sink[0])
+        async for _ in self._stream_narrativa(SYSTEM_PROMPT_TURNO, user, sink):
+            pass
+        turno_llm = await self._parse_stream_con_reintento(SYSTEM_PROMPT_TURNO, sink[0])
 
         tirada = None
         if turno_llm.requiere_tirada is not None:
             tirada = self._resolver_tirada(partida, turno_llm.requiere_tirada)
+            # La tirada se emite ANTES de generar el desenlace: el cliente abre el
+            # modal del dado mientras la fase 2 se genera en paralelo.
             yield _sse("tirada", _tirada_a_dict(tirada))
             user2 = build_resolucion_user_prompt(partida, accion, tirada)
             sink2: list[str] = []
-            async for text in self._stream_narrativa(SYSTEM_PROMPT_RESOLUCION, user2, sink2):
-                yield _sse("token", {"content": text})
-            turno_llm = self._parse_stream_turno(sink2[0])
+            async for _ in self._stream_narrativa(SYSTEM_PROMPT_RESOLUCION, user2, sink2):
+                pass
+            turno_llm = await self._parse_stream_con_reintento(SYSTEM_PROMPT_RESOLUCION, sink2[0])
 
         nuevo_turno_num = partida.metadata.turno_actual + 1
         es_final = turno_llm.estado_aventura.tipo == "finalizada"

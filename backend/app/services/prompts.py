@@ -139,7 +139,9 @@ completás final y razon_fin.
 - Mostrá, no expliques.
 - Las tres opciones deben ser MEANINGFULLY DIFFERENT: cada una con una \
 intención distinta (confrontar, negociar, explorar, engañar, usar objeto, etc.).
-- Las opciones en infinitivo o primera persona, máx 12 palabras.
+- Las opciones en infinitivo o primera persona, MÁX 12 palabras y MÁX 100 \
+caracteres cada una (es un límite duro del schema). Si una opción se estira, \
+recortala: es un disparador de acción, no una oración completa.
 
 Ejemplo de opciones MALAS (todas de confrontación — nunca hagas esto):
   - "Atacar al guardia con tu espada"
@@ -516,7 +518,9 @@ telegrafiada antes. Un fracaso_critico no equivale a muerte automática.
 Respondés SIEMPRE en JSON válido siguiendo el schema provisto (el mismo del \
 turno). Dejá requiere_tirada en null: este turno YA se resolvió, no encadenás \
 otra tirada. Segunda persona, párrafos breves, 60-150 palabras. Las tres \
-opciones meaningfully different que surjan de la nueva situación. Actualizá \
+opciones meaningfully different que surjan de la nueva situación, en infinitivo \
+o primera persona, MÁX 12 palabras y MÁX 100 caracteres cada una (límite duro \
+del schema): son disparadores de acción, no oraciones completas. Actualizá \
 arco (fase_narrativa, tension) y resumen_historia. Mantené coherencia con el \
 estado del mundo. Todos los campos en español rioplatense salvo los `_en`.
 """

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import dynamic from "next/dynamic";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
@@ -14,55 +14,53 @@ const Dice3DCanvas = dynamic(() => import("@/components/dice-3d-canvas"), {
   loading: () => null,
 });
 
-function prefiereMenosMovimiento(): boolean {
-  if (typeof window === "undefined" || !window.matchMedia) return false;
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
-
 interface DiceOverlayProps {
   tirada: Tirada;
   onClose: () => void;
 }
 
 /**
- * Overlay full-screen de la tirada. La animación 3D es realce sobre el resultado
- * autoritativo del servidor; bajo reduced-motion (o si falla la carga) degrada al
- * revelado estático con los mismos valores. Auto-cierra dando paso a la narrativa.
+ * Overlay de la tirada. El dado reposa apuntando la cara 20 y solo rueda cuando
+ * el jugador lo toca; tras asentar, el modal queda abierto hasta que el jugador
+ * lo cierra (botón o click afuera). La narrativa se revela recién al cerrarlo.
  */
 export function DiceOverlay({ tirada, onClose }: DiceOverlayProps) {
-  const reducido = prefiereMenosMovimiento();
-  // Con reduced-motion mostramos el resultado de una; con animación, recién al asentar.
-  const [revelado, setRevelado] = useState(reducido);
-
-  useEffect(() => {
-    if (!revelado) return;
-    // Sostener el resultado un instante y dar paso a la narrativa (fase 2).
-    const id = setTimeout(onClose, reducido ? 1400 : 1600);
-    return () => clearTimeout(id);
-  }, [revelado, reducido, onClose]);
+  const [rodar, setRodar] = useState(false);
+  const [revelado, setRevelado] = useState(false);
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-md border-0 bg-background/95 [&>button]:hidden">
+      <DialogContent className="max-w-md border-0 bg-background/95">
         <VisuallyHidden>
           <DialogTitle>Tirada de dado</DialogTitle>
         </VisuallyHidden>
 
-        {!reducido && (
-          <div className="mx-auto h-48 w-48" aria-hidden>
-            <Dice3DCanvas
-              valor={tirada.d20}
-              resultado={tirada.resultado}
-              onSettled={() => setRevelado(true)}
-            />
-          </div>
+        <button
+          type="button"
+          onClick={() => { if (!rodar) setRodar(true); }}
+          disabled={rodar}
+          aria-label={rodar ? "Dado en juego" : "Tocá el dado para tirar"}
+          className="mx-auto block h-48 w-48 rounded-full focus:outline-none disabled:cursor-default enabled:cursor-pointer"
+        >
+          <Dice3DCanvas
+            valor={tirada.d20}
+            resultado={tirada.resultado}
+            rodar={rodar}
+            onSettled={() => setRevelado(true)}
+          />
+        </button>
+
+        {!rodar && (
+          <p className="text-center text-sm font-medium text-foreground/90 animate-pulse">
+            Tocá el dado para tirar
+          </p>
         )}
 
-        {revelado ? (
-          <TiradaReveal tirada={tirada} />
-        ) : (
+        {rodar && !revelado && (
           <p className="text-center text-sm text-muted-foreground">Tirando…</p>
         )}
+
+        {revelado && <TiradaReveal tirada={tirada} />}
       </DialogContent>
     </Dialog>
   );

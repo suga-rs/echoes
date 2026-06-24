@@ -318,18 +318,66 @@ def test_stream_con_tirada_emite_evento_tirada_antes_del_turno(
     eventos = asyncio.run(_run())
     tipos = _tipos_de_eventos_sse(eventos)
 
-    # El evento de la tirada llega y precede al evento `turno` (y al desenlace).
+    # El evento de la tirada llega y precede al evento `turno` (el desenlace).
     assert "tirada" in tipos
     assert tipos.index("tirada") < tipos.index("turno")
-    # Tras la tirada se streamea el desenlace (al menos un token después).
-    assert "token" in tipos[tipos.index("tirada") + 1 :]
-    # Se hicieron las dos llamadas de streaming (fase 1 + fase 2).
+    # El turno se entrega atómicamente: no se emiten tokens parciales.
+    assert "token" not in tipos
+    # Se hicieron las dos llamadas al LLM (fase 1 + fase 2).
     assert foundry_mock.chat_streaming_async.call_count == 2
 
     # La tirada quedó persistida en el turno.
     guardada = partida_repo_mock.upsert.call_args[0][0]
     assert guardada.historial[-1].tirada is not None
     assert guardada.historial[-1].tirada.dc == 15
+
+
+def test_stream_fase2_invalida_reintenta_no_streaming_y_no_corta(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    """Si el desenlace streameado viola el schema (p. ej. una opción demasiado
+    larga), el servicio reintenta sin streaming y emite el turno igual, sin
+    cortar con un evento `error`."""
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+    fase1 = json.dumps(_fase1_con_tirada(habilidad="destreza", banda="media"))
+    # Fase 2 streameada inválida: una opción supera el maxLength de 100.
+    fase2_invalida = fake_turno_llm_response()
+    fase2_invalida["opciones"] = ["x" * 101, "Opción válida B", "Opción válida C"]
+
+    def _make_gen(payload: str):
+        async def gen(_system: str, _user: str):
+            yield payload
+
+        return gen
+
+    gens = [_make_gen(fase1), _make_gen(json.dumps(fase2_invalida))]
+    foundry_mock.chat_streaming_async.side_effect = lambda s, u: gens.pop(0)(s, u)
+    # El reintento no-streaming devuelve un turno válido.
+    foundry_mock.chat_json_raw.return_value = ("{}", fake_turno_llm_response())
+
+    svc = PartidaService(
+        foundry=foundry_mock,
+        partidas=partida_repo_mock,
+        imagenes=imagen_repo_mock,
+        rng=random.Random(123),
+    )
+
+    async def _run() -> list[str]:
+        return [e async for e in svc.avanzar_turno_stream("test-abc-123", "saltar el abismo")]
+
+    tipos = _tipos_de_eventos_sse(asyncio.run(_run()))
+
+    # El turno se emitió pese a la fase 2 inválida, y no hubo evento `error`.
+    assert "turno" in tipos
+    assert "error" not in tipos
+    # Se hizo el reintento no-streaming (una llamada a chat_json_raw).
+    assert foundry_mock.chat_json_raw.call_count == 1
+    # El turno persistido usa las opciones válidas del reintento.
+    guardada = partida_repo_mock.upsert.call_args[0][0]
+    assert all(len(o) <= 100 for o in guardada.historial[-1].opciones)
 
 
 def test_stream_sin_tirada_no_emite_evento_tirada(

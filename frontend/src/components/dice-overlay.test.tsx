@@ -1,7 +1,19 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { DiceOverlay } from "@/components/dice-overlay";
 import type { Tirada } from "@/lib/types";
+
+// Stub del canvas 3D (WebGL no existe en jsdom): asienta cuando arranca la tirada.
+vi.mock("@/components/dice-3d-canvas", async () => {
+  const React = await import("react");
+  const DiceCanvasMock = ({ rodar, onSettled }: { rodar: boolean; onSettled: () => void }) => {
+    React.useEffect(() => {
+      if (rodar) onSettled();
+    }, [rodar, onSettled]);
+    return React.createElement("div", { "data-testid": "dice-canvas" });
+  };
+  return { default: DiceCanvasMock };
+});
 
 const tirada: Tirada = {
   habilidad: "destreza",
@@ -13,46 +25,43 @@ const tirada: Tirada = {
   resultado: "exito",
 };
 
-function stubReducedMotion(reduce: boolean) {
-  vi.stubGlobal(
-    "matchMedia",
-    vi.fn().mockImplementation((query: string) => ({
-      matches: reduce,
-      media: query,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })),
-  );
-}
+describe("DiceOverlay", () => {
+  it("reposa sin animar ni revelar hasta que el jugador toca el dado", async () => {
+    render(<DiceOverlay tirada={tirada} onClose={vi.fn()} />);
+    await screen.findByTestId("dice-canvas");
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-  vi.useRealTimers();
-});
-
-describe("DiceOverlay (reduced motion)", () => {
-  it("muestra los valores de la tirada del servidor sin montar el canvas 3D", () => {
-    stubReducedMotion(true);
-    const { container } = render(<DiceOverlay tirada={tirada} onClose={vi.fn()} />);
-
-    // El resultado autoritativo se muestra como texto (assert data, no píxeles).
-    expect(screen.getByText(/d20 14 \+3 = 17 vs DC 15/)).toBeInTheDocument();
-    expect(screen.getByText("Éxito")).toBeInTheDocument();
-    // Sin animación: no se montó ningún <canvas>.
-    expect(container.querySelector("canvas")).toBeNull();
+    expect(screen.getByText("Tocá el dado para tirar")).toBeInTheDocument();
+    // Sin tocar: no se reveló el resultado autoritativo.
+    expect(screen.queryByText(/d20 14/)).not.toBeInTheDocument();
   });
 
-  it("auto-cierra tras sostener el resultado", () => {
-    vi.useFakeTimers();
-    stubReducedMotion(true);
+  it("al tocar el dado, anima y revela el resultado del servidor", async () => {
+    render(<DiceOverlay tirada={tirada} onClose={vi.fn()} />);
+    const area = await screen.findByRole("button", { name: "Tocá el dado para tirar" });
+
+    fireEvent.click(area);
+
+    // Tras asentar, se revela el desenlace (habilidad + resultado), sin números técnicos.
+    expect(await screen.findByText(/Destreza/)).toBeInTheDocument();
+    expect(screen.getByText("Éxito")).toBeInTheDocument();
+    expect(screen.queryByText(/d20/)).not.toBeInTheDocument();
+  });
+
+  it("no se auto-cierra: onClose no se invoca solo", async () => {
     const onClose = vi.fn();
     render(<DiceOverlay tirada={tirada} onClose={onClose} />);
+    await screen.findByTestId("dice-canvas");
 
+    await new Promise((r) => setTimeout(r, 60));
     expect(onClose).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(1500);
+  });
+
+  it("se cierra con el control de cierre del modal", async () => {
+    const onClose = vi.fn();
+    render(<DiceOverlay tirada={tirada} onClose={onClose} />);
+    await screen.findByTestId("dice-canvas");
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

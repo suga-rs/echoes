@@ -40,6 +40,9 @@ export default function HomePage() {
   const imagenUltimoTurnoPendiente = usePartidaStore((s) => s.imagenUltimoTurnoPendiente);
   const tiradaActual = usePartidaStore((s) => s.tiradaActual);
   const cerrarTirada = usePartidaStore((s) => s.cerrarTirada);
+  const turnoPendiente = usePartidaStore((s) => s.turnoPendiente);
+  const appendStreamToken = usePartidaStore((s) => s.appendStreamToken);
+  const commitTurnoPendiente = usePartidaStore((s) => s.commitTurnoPendiente);
   const hidratarDesdeBackend = usePartidaStore((s) => s.hidratarDesdeBackend);
   const resetear = usePartidaStore((s) => s.resetear);
   const establecerCodigo = usePartidaStore((s) => s.establecerCodigo);
@@ -84,6 +87,27 @@ export default function HomePage() {
       finalRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
     }
   }, [historial.length]);
+
+  // Replay typewriter del desenlace tras cerrar el modal del dado: cuando hay un
+  // turno retenido y el modal ya está cerrado, re-tipeamos la narrativa y luego
+  // la volcamos al historial. Si el modal se cerró antes de que llegara el turno
+  // (turnoPendiente null), no corre nada: la narrativa sigue en vivo.
+  useEffect(() => {
+    if (tiradaActual !== null || !turnoPendiente || !isStreaming) return;
+    const texto = turnoPendiente.turno.narrativa;
+    const paso = Math.max(1, Math.ceil(texto.length / 120));
+    let pos = 0;
+    const id = setInterval(() => {
+      const siguiente = Math.min(texto.length, pos + paso);
+      appendStreamToken(texto.slice(pos, siguiente));
+      pos = siguiente;
+      if (pos >= texto.length) {
+        clearInterval(id);
+        commitTurnoPendiente();
+      }
+    }, 16);
+    return () => clearInterval(id);
+  }, [tiradaActual, turnoPendiente, isStreaming, appendStreamToken, commitTurnoPendiente]);
 
   const nuevaPartida = () => {
     resetear();
@@ -132,7 +156,7 @@ export default function HomePage() {
               );
             })}
 
-            {isStreaming && streamingNarrativa !== null && (
+            {isStreaming && streamingNarrativa !== null && tiradaActual === null && turnoPendiente !== null && (
               <StreamingTurnoCard narrativa={streamingNarrativa} />
             )}
 

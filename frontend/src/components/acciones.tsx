@@ -24,7 +24,6 @@ export function Acciones({ opciones }: AccionesProps) {
   const iniciarTirada = usePartidaStore((s) => s.iniciarTirada);
   const finalizarStreaming = usePartidaStore((s) => s.finalizarStreaming);
   const actualizarImagenTurno = usePartidaStore((s) => s.actualizarImagenTurno);
-  const actualizarEstadoFinal = usePartidaStore((s) => s.actualizarEstadoFinal);
   const cancelarStreaming = usePartidaStore((s) => s.cancelarStreaming);
 
   const enviarAccion = async (accion: string) => {
@@ -43,17 +42,22 @@ export function Acciones({ opciones }: AccionesProps) {
 
       onTurno: (data) => {
         turnoNum = data.turno;
-        finalizarStreaming({
-          turno: data.turno,
-          accion_jugador: accion.trim(),
-          narrativa: data.narrativa,
-          opciones: data.opciones,
-          imagen_url: null,
-          tirada: data.tirada ?? null,
-        }, data.imagen_pendiente);
-        if (data.estado === "finalizada") {
-          actualizarEstadoFinal(data.estado, data.final, data.razon_fin);
-        }
+        finalizarStreaming(
+          {
+            turno: data.turno,
+            accion_jugador: accion.trim(),
+            narrativa: data.narrativa,
+            opciones: data.opciones,
+            imagen_url: null,
+            tirada: data.tirada ?? null,
+          },
+          data.imagen_pendiente,
+          // El estado final viaja con el turno para aplicarse al volcarlo (sea
+          // ahora o al cerrar el modal del dado si está retenido).
+          data.estado === "finalizada"
+            ? { estado: data.estado, final: data.final, razon: data.razon_fin }
+            : null,
+        );
         setAccionLibre("");
       },
 

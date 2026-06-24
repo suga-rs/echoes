@@ -31,13 +31,10 @@ const RESULTADO_CLASS: Record<ResultadoTirada, string> = {
   fracaso_critico: "text-destructive border-destructive/40 bg-destructive/10",
 };
 
-function signo(n: number): string {
-  return n >= 0 ? `+${n}` : `${n}`;
-}
-
 /**
- * Revelado estático de una tirada resuelta. Es la fuente de verdad textual y el
- * fallback de reduced-motion; la animación 3D es solo realce sobre estos valores.
+ * Revelado de una tirada resuelta para el jugador. Muestra la habilidad puesta a
+ * prueba, su dificultad y el desenlace; los números técnicos (d20, modificador,
+ * total, DC) se omiten para no confundir a un jugador no técnico.
  */
 export function TiradaReveal({ tirada }: { tirada: Tirada }) {
   return (
@@ -48,14 +45,11 @@ export function TiradaReveal({ tirada }: { tirada: Tirada }) {
     >
       <div className="flex items-center justify-between gap-2">
         <span className="font-medium">
-          Tirada de {HABILIDAD_LABEL[tirada.habilidad]} · {BANDA_LABEL[tirada.banda]} (DC {tirada.dc})
+          Prueba de {HABILIDAD_LABEL[tirada.habilidad]} · {BANDA_LABEL[tirada.banda]}
         </span>
         <span className="font-semibold uppercase tracking-wide text-xs">
           {RESULTADO_LABEL[tirada.resultado]}
         </span>
-      </div>
-      <div className="mt-1 font-mono text-xs text-foreground/80">
-        d20 {tirada.d20} {signo(tirada.modificador)} = {tirada.total} vs DC {tirada.dc}
       </div>
     </div>
   );

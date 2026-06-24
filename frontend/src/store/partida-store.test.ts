@@ -59,11 +59,17 @@ describe("partida-store", () => {
     expect(usePartidaStore.getState().streamingNarrativa).toBe("Hola mundo");
   });
 
-  it("finalizarStreaming agrega el turno y limpia los flags de streaming", () => {
+  it("finalizarStreaming retiene el turno para el revelado y commitea al terminar", () => {
     usePartidaStore.getState().iniciarStreaming();
     usePartidaStore.getState().appendStreamToken("...");
     usePartidaStore.getState().finalizarStreaming(turno(2), true);
 
+    // Aún no commiteado: queda pendiente para el revelado typewriter.
+    expect(usePartidaStore.getState().turnoPendiente?.turno.turno).toBe(2);
+    expect(usePartidaStore.getState().historial).toHaveLength(0);
+
+    // Al terminar el typewriter, el turno se vuelca y se limpian los flags.
+    usePartidaStore.getState().commitTurnoPendiente();
     const s = usePartidaStore.getState();
     expect(s.isStreaming).toBe(false);
     expect(s.streamingNarrativa).toBeNull();
@@ -120,5 +126,86 @@ describe("partida-store", () => {
     expect(s.codigoPartida).toBeNull();
     expect(s.historial).toEqual([]);
     expect(s.estado).toBeNull();
+  });
+});
+
+const tiradaFixture = {
+  habilidad: "destreza",
+  banda: "media",
+  dc: 15,
+  d20: 14,
+  modificador: 3,
+  total: 17,
+  resultado: "exito",
+} as const;
+
+const get = () => usePartidaStore.getState();
+
+describe("partida-store: buffering de la tirada", () => {
+  it("retiene el turno (no toca el historial ni cierra el modal) si la tirada está abierta", () => {
+    get().iniciarStreaming();
+    get().iniciarTirada(tiradaFixture);
+    get().finalizarStreaming(turno(2), false, null);
+
+    expect(get().turnoPendiente?.turno.turno).toBe(2);
+    expect(get().historial).toHaveLength(0);
+    expect(get().tiradaActual).not.toBeNull(); // modal sigue abierto
+  });
+
+  it("al cerrar el modal con turno retenido, arranca el replay y luego commitea", () => {
+    get().iniciarStreaming();
+    get().iniciarTirada(tiradaFixture);
+    get().finalizarStreaming(turno(2), false, {
+      estado: "finalizada",
+      final: "exito",
+      razon: "ganaste",
+    });
+
+    get().cerrarTirada();
+    expect(get().tiradaActual).toBeNull();
+    expect(get().isStreaming).toBe(true);
+    expect(get().streamingNarrativa).toBe("");
+    expect(get().turnoPendiente).not.toBeNull();
+
+    get().commitTurnoPendiente();
+    expect(get().historial.map((t) => t.turno)).toContain(2);
+    expect(get().turnoPendiente).toBeNull();
+    expect(get().isStreaming).toBe(false);
+    expect(get().estado).toBe("finalizada");
+    expect(get().final).toBe("exito");
+    expect(get().razonFin).toBe("ganaste");
+  });
+
+  it("cierre temprano (sin turno aún): al llegar el turno arranca el revelado y commitea", () => {
+    get().iniciarStreaming();
+    get().iniciarTirada(tiradaFixture);
+    get().appendStreamToken("parcial");
+
+    get().cerrarTirada(); // turnoPendiente es null
+    expect(get().tiradaActual).toBeNull();
+    expect(get().streamingNarrativa).toBe("parcial");
+
+    // El turno llega luego: arranca el revelado typewriter (no commitea de una).
+    get().finalizarStreaming(turno(2), false, null);
+    expect(get().turnoPendiente?.turno.turno).toBe(2);
+    expect(get().streamingNarrativa).toBe("");
+    expect(get().historial).toHaveLength(0);
+
+    get().commitTurnoPendiente();
+    expect(get().historial.map((t) => t.turno)).toContain(2);
+    expect(get().streamingNarrativa).toBeNull();
+  });
+
+  it("la imagen que llega con el turno retenido se guarda en el turno pendiente", () => {
+    get().iniciarStreaming();
+    get().iniciarTirada(tiradaFixture);
+    get().finalizarStreaming(turno(2), true, null);
+
+    get().actualizarImagenTurno(2, "http://img/2.png");
+    expect(get().turnoPendiente?.turno.imagen_url).toBe("http://img/2.png");
+    expect(get().turnoPendiente?.imagenPendiente).toBe(false);
+
+    get().commitTurnoPendiente();
+    expect(get().historial.find((t) => t.turno === 2)?.imagen_url).toBe("http://img/2.png");
   });
 });

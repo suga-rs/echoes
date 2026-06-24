@@ -14,11 +14,14 @@ const base: Tirada = {
 };
 
 describe("TiradaReveal", () => {
-  it("muestra habilidad, DC y el cálculo del total", () => {
+  it("muestra habilidad, dificultad y resultado, sin datos técnicos", () => {
     render(<TiradaReveal tirada={base} />);
     expect(screen.getByText(/Destreza/)).toBeInTheDocument();
-    expect(screen.getByText(/d20 14 \+3 = 17 vs DC 15/)).toBeInTheDocument();
+    expect(screen.getByText(/Media/)).toBeInTheDocument();
     expect(screen.getByText("Éxito")).toBeInTheDocument();
+    // Los números técnicos no se muestran al jugador.
+    expect(screen.queryByText(/d20/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/DC/)).not.toBeInTheDocument();
   });
 
   it("distingue el éxito crítico", () => {
@@ -26,8 +29,9 @@ describe("TiradaReveal", () => {
     expect(screen.getByText("¡Éxito crítico!")).toBeInTheDocument();
   });
 
-  it("muestra modificador negativo con su signo", () => {
+  it("muestra el fracaso sin exponer el cálculo", () => {
     render(<TiradaReveal tirada={{ ...base, modificador: -2, total: 12, resultado: "fracaso" }} />);
-    expect(screen.getByText(/d20 14 -2 = 12/)).toBeInTheDocument();
+    expect(screen.getByText("Fracaso")).toBeInTheDocument();
+    expect(screen.queryByText(/=/)).not.toBeInTheDocument();
   });
 });
