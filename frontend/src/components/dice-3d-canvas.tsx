@@ -4,9 +4,19 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import type { ResultadoTirada } from "@/lib/types";
 import { carasD20, quaternionParaValor } from "@/lib/d20-geometry";
+import {
+  CAM_REPOSO,
+  alturaEnT,
+  camaraZEnT,
+  crearParametros,
+  escalaImpactoEnT,
+  estaAsentado,
+  horizontalEnT,
+  orientacionEnT,
+  type ParametrosTirada,
+} from "@/lib/dice-throw";
+import { DICE_SCHEMES, useSettingsStore } from "@/store/settings-store";
 
-const DUR_TUMBLE = 1.2; // s de giro caótico
-const DUR_SETTLE = 0.7; // s de frenado hacia la cara objetivo
 const RADIO = 1.3; // radio del icosaedro del dado
 
 const EMISSIVE: Record<ResultadoTirada, number> = {
@@ -26,14 +36,14 @@ interface Dice3DCanvasProps {
 }
 
 /** Textura de canvas con un número, para rotular una cara del d20. */
-function texturaNumero(n: number): THREE.CanvasTexture {
+function texturaNumero(n: number, labelColor: string): THREE.CanvasTexture {
   const size = 128;
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext("2d");
   if (ctx) {
     ctx.clearRect(0, 0, size, size);
-    ctx.fillStyle = "#111827";
+    ctx.fillStyle = labelColor;
     ctx.font = "bold 76px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -45,7 +55,7 @@ function texturaNumero(n: number): THREE.CanvasTexture {
 }
 
 /** Crea los 20 planos numerados, parentados al dado para que giren con él. */
-function construirRotulos(): { grupo: THREE.Group; dispose: () => void } {
+function construirRotulos(labelColor: string): { grupo: THREE.Group; dispose: () => void } {
   const grupo = new THREE.Group();
   const texturas: THREE.CanvasTexture[] = [];
   const geometrias: THREE.PlaneGeometry[] = [];
@@ -53,7 +63,7 @@ function construirRotulos(): { grupo: THREE.Group; dispose: () => void } {
   const ejeZ = new THREE.Vector3(0, 0, 1);
 
   for (const cara of carasD20()) {
-    const tex = texturaNumero(cara.valor);
+    const tex = texturaNumero(cara.valor, labelColor);
     const geo = new THREE.PlaneGeometry(0.62, 0.62);
     const mat = new THREE.MeshBasicMaterial({
       map: tex,
@@ -91,6 +101,10 @@ function construirRotulos(): { grupo: THREE.Group; dispose: () => void } {
  */
 export default function Dice3DCanvas({ valor, resultado, rodar, onSettled }: Dice3DCanvasProps) {
   const contenedor = useRef<HTMLDivElement>(null);
+  // Esquema de color elegido por el jugador. Si el valor persistido quedara fuera
+  // del mapa, caemos al esquema marfil por defecto.
+  const diceScheme = useSettingsStore((s) => s.diceScheme);
+  const paleta = DICE_SCHEMES[diceScheme] ?? DICE_SCHEMES.marfil;
   // Refs para que cambios de identidad del callback o del flag no recreen la escena.
   const onSettledRef = useRef(onSettled);
   onSettledRef.current = onSettled;
@@ -127,27 +141,20 @@ export default function Dice3DCanvas({ valor, resultado, rodar, onSettled }: Dic
     const esCritico = resultado === "exito_critico" || resultado === "fracaso_critico";
     const geometria = new THREE.IcosahedronGeometry(RADIO, 0);
     const material = new THREE.MeshStandardMaterial({
-      color: 0xe5e7eb,
+      color: paleta.body,
       flatShading: true,
-      metalness: 0.3,
-      roughness: 0.4,
+      metalness: paleta.metalness,
+      roughness: paleta.roughness,
       emissive: new THREE.Color(EMISSIVE[resultado]),
       emissiveIntensity: 0.1,
     });
     const mesh = new THREE.Mesh(geometria, material);
-    const rotulos = construirRotulos();
+    const rotulos = construirRotulos(paleta.label);
     mesh.add(rotulos.grupo);
     scene.add(mesh);
 
-    const [qx, qy, qz, qw] = quaternionParaValor(valor);
-    const objetivo = new THREE.Quaternion(qx, qy, qz, qw);
-    const [vx, vy, vz, vw] = quaternionParaValor(20);
-    const reposo = new THREE.Quaternion(vx, vy, vz, vw);
-    const desde = new THREE.Quaternion().setFromEuler(
-      new THREE.Euler(valor * 1.7, valor * 2.3, valor * 0.9),
-    );
-
     // Pose de reposo: cara 20 hacia la cámara, sin animar hasta que `rodar` sea true.
+    const reposo = new THREE.Quaternion(...quaternionParaValor(20));
     mesh.quaternion.copy(reposo);
 
     let raf = 0;
@@ -155,6 +162,9 @@ export default function Dice3DCanvas({ valor, resultado, rodar, onSettled }: Dic
     let last = performance.now();
     let avisado = false;
     let rodando = false;
+    // Parámetros de la tirada (eje de tumble aleatorio + poses); se crean al
+    // arrancar para que la animación del lanzamiento sea reproducible por frame.
+    let params: ParametrosTirada | null = null;
 
     const loop = (now: number) => {
       const delta = (now - last) / 1000;
@@ -162,24 +172,26 @@ export default function Dice3DCanvas({ valor, resultado, rodar, onSettled }: Dic
 
       if (rodarRef.current) {
         if (!rodando) {
-          // Arranque de la tirada: reseteamos el cronómetro de la animación.
+          // Arranque del lanzamiento: fijamos parámetros y reseteamos el reloj.
           rodando = true;
           t = 0;
+          params = crearParametros(valor);
         }
         t += delta;
 
-        if (t < DUR_TUMBLE) {
-          // Giro rápido multiaxis (el "tumble").
-          mesh.rotation.x += delta * 9;
-          mesh.rotation.y += delta * 7;
-          mesh.rotation.z += delta * 5;
-        } else {
-          // Settle: interpolamos hacia la cara objetivo (easeOutCubic).
-          const p = Math.min(1, (t - DUR_TUMBLE) / DUR_SETTLE);
-          const ease = 1 - Math.pow(1 - p, 3);
-          mesh.quaternion.slerpQuaternions(desde, objetivo, ease);
-          if (p >= 1 && !avisado) {
+        if (params) {
+          // Trayectoria de dado lanzado: arco + rebotes, giro continuo y dolly de
+          // cámara, todo derivado de la matemática pura en funcion de `t`.
+          mesh.position.set(horizontalEnT(t), alturaEnT(t), 0);
+          mesh.quaternion.copy(orientacionEnT(t, params));
+          mesh.scale.copy(escalaImpactoEnT(t));
+          camera.position.z = camaraZEnT(t);
+
+          if (estaAsentado(t) && !avisado) {
             avisado = true;
+            mesh.position.set(0, 0, 0);
+            mesh.scale.set(1, 1, 1);
+            camera.position.z = CAM_REPOSO;
             material.emissiveIntensity = esCritico ? 0.9 : 0.35;
             onSettledRef.current();
           }
@@ -202,7 +214,7 @@ export default function Dice3DCanvas({ valor, resultado, rodar, onSettled }: Dic
         cont.removeChild(renderer.domElement);
       }
     };
-  }, [valor, resultado]);
+  }, [valor, resultado, paleta]);
 
   return <div ref={contenedor} className="h-full w-full" aria-hidden />;
 }

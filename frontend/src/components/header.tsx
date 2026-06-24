@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
-import { Copy, Plus, Package, PanelLeft, Home, LogIn, LogOut, User, Settings, ChevronDown } from "lucide-react";
+import { Plus, Package, PanelLeft, Home, LogIn, LogOut, User, Settings, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -25,6 +25,9 @@ import { AuthModal } from "./auth-modal";
 import { SettingsSheet } from "./settings-sheet";
 import { FichaAtributos } from "./ficha-atributos";
 
+const capitalizar = (texto: string) =>
+  texto.charAt(0).toUpperCase() + texto.slice(1);
+
 interface HeaderProps {
   onNuevaPartida: () => void;
   onToggleSidebar?: () => void;
@@ -35,7 +38,6 @@ export function Header({ onNuevaPartida, onToggleSidebar, onVolverAlInicio }: He
   const [showInventario, setShowInventario] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [copiado, setCopiado] = useState(false);
   const codigo = usePartidaStore((s) => s.codigoPartida);
   const objetivo = usePartidaStore((s) => s.objetivo);
   const personaje = usePartidaStore((s) => s.personaje);
@@ -47,13 +49,6 @@ export function Header({ onNuevaPartida, onToggleSidebar, onVolverAlInicio }: He
   const cerrarSesion = () => {
     logout();
     queryClient.invalidateQueries({ queryKey: ["partidas"] });
-  };
-
-  const copiarCodigo = async () => {
-    if (!codigo) return;
-    await navigator.clipboard.writeText(codigo);
-    setCopiado(true);
-    setTimeout(() => setCopiado(false), 1500);
   };
 
   return (
@@ -76,7 +71,7 @@ export function Header({ onNuevaPartida, onToggleSidebar, onVolverAlInicio }: He
               <div className="text-xs text-muted-foreground uppercase tracking-wide">
                 Objetivo
               </div>
-              <div className="fuente-narrativa text-sm font-medium truncate">{objetivo}</div>
+              <div className="fuente-narrativa text-sm font-medium truncate">{capitalizar(objetivo)}</div>
             </>
           ) : (
             <div className="text-sm font-semibold">Echoes</div>
@@ -84,28 +79,15 @@ export function Header({ onNuevaPartida, onToggleSidebar, onVolverAlInicio }: He
         </div>
 
         {codigo && (
-          <>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowInventario(true)}
-              title="Ver inventario"
-            >
-              <Package className="h-4 w-4" />
-              <span className="ml-1 text-xs">{inventario.length}</span>
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={copiarCodigo}
-              title="Copiar código de partida"
-              className="text-xs font-mono"
-            >
-              <Copy className="h-3 w-3 mr-1" />
-              {copiado ? "¡copiado!" : codigo.slice(0, 9)}
-            </Button>
-          </>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowInventario(true)}
+            title="Ver inventario"
+          >
+            <Package className="h-4 w-4" />
+            <span className="ml-1 text-xs">{inventario.length}</span>
+          </Button>
         )}
 
         {user ? (
@@ -214,7 +196,7 @@ export function Header({ onNuevaPartida, onToggleSidebar, onVolverAlInicio }: He
                   className="flex items-center gap-2 p-2 bg-muted rounded-md text-sm"
                 >
                   <span className="text-muted-foreground">•</span>
-                  {item}
+                  {capitalizar(item)}
                 </li>
               ))}
             </ul>
