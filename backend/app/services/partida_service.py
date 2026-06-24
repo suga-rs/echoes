@@ -62,6 +62,7 @@ from app.repositories.partida_repo import PartidaRepository
 from app.services import dados, vida
 from app.services.foundry_client import FoundryClient
 from app.services.prompts import (
+    MAX_NPCS_ANCLADOS,
     PROMPT_VERSION,
     SYSTEM_PROMPT_CREACION,
     SYSTEM_PROMPT_RESOLUCION,
@@ -251,6 +252,9 @@ class PartidaService:
         imagen_url = None
         es_final = murio or turno_llm.estado_aventura.tipo == "finalizada"
         descripcion_escena = turno_llm.generar_imagen.descripcion_escena_en
+        # _aplicar_actualizaciones ya registró cualquier NPC nuevo de este turno,
+        # así que la resolución encuentra su descripción visual canónica.
+        npcs_en_escena = list(turno_llm.generar_imagen.npcs_en_escena)
         if es_final and descripcion_escena:
             imagen_url = self._generar_imagen_segura(
                 codigo_partida=codigo_partida,
@@ -260,6 +264,7 @@ class PartidaService:
                 genero=partida.metadata.genero,
                 imagenes_previas=partida.metadata.imagenes_generadas,
                 usa_referencia=partida.metadata.usa_referencia_visual,
+                npcs_visuales_en=resolver_npcs_visuales(npcs_en_escena, partida.world_state.npcs),
             )
             if imagen_url:
                 partida.metadata.imagenes_generadas += 1
@@ -271,6 +276,7 @@ class PartidaService:
             opciones=list(turno_llm.opciones),
             imagen_url=imagen_url,
             descripcion_escena_en=descripcion_escena,
+            npcs_en_escena=npcs_en_escena,
             tirada=tirada,
         )
         partida.historial.append(nuevo_turno)
@@ -470,6 +476,9 @@ class PartidaService:
                     nombre=upd.npc_encontrado.nombre,
                     descripcion=upd.npc_encontrado.descripcion,
                     actitud=actitud,
+                    # Aspecto canónico capturado una sola vez: ancla la apariencia
+                    # del NPC en todas sus imágenes. None si el narrador no lo emitió.
+                    descripcion_visual_en=upd.npc_encontrado.descripcion_visual_en or None,
                 )
             )
 
@@ -588,6 +597,7 @@ class PartidaService:
         genero: Genero,
         imagenes_previas: int,
         usa_referencia: bool,
+        npcs_visuales_en: list[str] | None = None,
     ) -> str | None:
         if imagenes_previas >= self.settings.max_imagenes_por_partida:
             logger.info("Límite de imágenes alcanzado")
@@ -595,7 +605,10 @@ class PartidaService:
 
         try:
             prompt = build_image_prompt(
-                personaje.descripcion_visual_en, descripcion_escena_en, genero
+                personaje.descripcion_visual_en,
+                descripcion_escena_en,
+                genero,
+                npcs_visuales_en=npcs_visuales_en,
             )
             # Flujo nuevo: anclar la escena a la referencia canónica del personaje
             # vía images.edit. Si la referencia falla, degradamos a imagen por
@@ -673,6 +686,9 @@ class PartidaService:
             genero=partida.metadata.genero,
             imagenes_previas=partida.metadata.imagenes_generadas,
             usa_referencia=partida.metadata.usa_referencia_visual,
+            # Los NPCs solo se suman al estado; resolver los nombres guardados en el
+            # turno contra el estado actual recupera sus descripciones canónicas.
+            npcs_visuales_en=resolver_npcs_visuales(turno.npcs_en_escena, partida.world_state.npcs),
         )
         if not imagen_url:
             raise FoundryError("Falló la generación de la imagen")
@@ -833,6 +849,7 @@ class PartidaService:
 
         # Persist turn (without image URL yet)
         descripcion_escena = turno_llm.generar_imagen.descripcion_escena_en
+        npcs_en_escena = list(turno_llm.generar_imagen.npcs_en_escena)
         nuevo_turno = TurnoHistorial(
             turno=nuevo_turno_num,
             accion_jugador=accion,
@@ -840,6 +857,7 @@ class PartidaService:
             opciones=list(turno_llm.opciones),
             imagen_url=None,
             descripcion_escena_en=descripcion_escena,
+            npcs_en_escena=npcs_en_escena,
             tirada=tirada,
         )
         partida.historial.append(nuevo_turno)
@@ -889,6 +907,7 @@ class PartidaService:
                 genero=partida.metadata.genero,
                 imagenes_previas=partida.metadata.imagenes_generadas,
                 usa_referencia=partida.metadata.usa_referencia_visual,
+                npcs_visuales_en=resolver_npcs_visuales(npcs_en_escena, partida.world_state.npcs),
             )
             if imagen_url:
                 partida.metadata.imagenes_generadas += 1
@@ -903,6 +922,25 @@ class PartidaService:
         alphabet = "abcdefghijkmnpqrstuvwxyz23456789"
         groups = ["".join(secrets.choice(alphabet) for _ in range(4)) for _ in range(3)]
         return "-".join(groups)
+
+
+def resolver_npcs_visuales(npcs_en_escena: list[str], npcs: list[NPC]) -> list[str]:
+    """Resuelve los nombres de NPCs presentes en la escena a sus descripciones
+    visuales canónicas. Matching tolerante (case-insensitive + trim); ignora
+    nombres que no resuelven a un NPC conocido o que no tienen descripción visual.
+    Devuelve a lo sumo MAX_NPCS_ANCLADOS descripciones, preservando el orden de
+    `npcs_en_escena`. Degradación suave: nunca lanza, la imagen se genera igual."""
+    if not npcs_en_escena:
+        return []
+    por_nombre = {n.nombre.strip().casefold(): n for n in npcs}
+    visuales: list[str] = []
+    for nombre in npcs_en_escena:
+        npc = por_nombre.get(nombre.strip().casefold())
+        if npc is not None and npc.descripcion_visual_en:
+            visuales.append(npc.descripcion_visual_en)
+            if len(visuales) >= MAX_NPCS_ANCLADOS:
+                break
+    return visuales
 
 
 def _tirada_a_dict(tirada: Tirada) -> dict:

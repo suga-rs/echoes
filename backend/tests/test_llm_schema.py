@@ -64,7 +64,12 @@ def test_turno_guard_descripcion_escena_es_str_requerido():
     assert isinstance(modelo.generar_imagen.descripcion_escena_en, str)
 
 
-_NPC_VALIDO = {"nombre": "Eldrin", "descripcion": "Un ermitaño", "actitud": "neutral"}
+_NPC_VALIDO = {
+    "nombre": "Eldrin",
+    "descripcion": "Un ermitaño",
+    "actitud": "neutral",
+    "descripcion_visual_en": "Old hermit, long white beard, tattered grey robe, wooden staff",
+}
 
 TURNO_INVALIDOS = [
     pytest.param(_con(fake_turno_llm_response(), ["narrativa"], "x" * 49), id="narrativa-corta"),
@@ -134,6 +139,57 @@ TURNO_INVALIDOS = [
 
 @pytest.mark.parametrize("payload", TURNO_INVALIDOS)
 def test_turno_invalido_falla(payload: dict):
+    with pytest.raises(ValidationError):
+        validate(payload, TURNO_JSON_SCHEMA)
+
+
+# ----------------------------------------------------- TURNO: consistencia visual de NPCs
+
+
+def test_turno_npc_encontrado_con_visual_es_valido():
+    payload = _con(
+        fake_turno_llm_response(),
+        ["actualizaciones_estado", "npc_encontrado"],
+        _NPC_VALIDO,
+    )
+    validate(payload, TURNO_JSON_SCHEMA)
+    modelo = TurnoLLMResponse.model_validate(payload)
+    assert modelo.actualizaciones_estado.npc_encontrado.descripcion_visual_en.startswith("Old")
+
+
+def test_turno_npc_encontrado_sin_visual_falla():
+    """descripcion_visual_en es requerido cuando se introduce un NPC."""
+    payload = _con(
+        fake_turno_llm_response(),
+        ["actualizaciones_estado", "npc_encontrado"],
+        _sin(_NPC_VALIDO, ["descripcion_visual_en"]),
+    )
+    with pytest.raises(ValidationError):
+        validate(payload, TURNO_JSON_SCHEMA)
+
+
+def test_turno_npcs_en_escena_valido():
+    payload = _con(
+        fake_turno_llm_response(),
+        ["generar_imagen", "npcs_en_escena"],
+        ["Eldrin", "Gorad"],
+    )
+    validate(payload, TURNO_JSON_SCHEMA)
+    modelo = TurnoLLMResponse.model_validate(payload)
+    assert modelo.generar_imagen.npcs_en_escena == ["Eldrin", "Gorad"]
+
+
+def test_turno_npcs_en_escena_ausente_default_lista_vacia():
+    """npcs_en_escena es opcional: ausente deserializa como lista vacía."""
+    payload = fake_turno_llm_response()
+    assert "npcs_en_escena" not in payload["generar_imagen"]
+    validate(payload, TURNO_JSON_SCHEMA)
+    modelo = TurnoLLMResponse.model_validate(payload)
+    assert modelo.generar_imagen.npcs_en_escena == []
+
+
+def test_turno_npcs_en_escena_tipo_invalido_falla():
+    payload = _con(fake_turno_llm_response(), ["generar_imagen", "npcs_en_escena"], "Eldrin")
     with pytest.raises(ValidationError):
         validate(payload, TURNO_JSON_SCHEMA)
 

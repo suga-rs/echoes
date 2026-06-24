@@ -8,11 +8,14 @@ from app.models.domain import Genero
 from app.services.prompts import (
     CREATION_POOLS,
     ESTILO_POR_GENERO,
+    MAX_NPCS_ANCLADOS,
     PROMPT_VERSION,
     SYSTEM_PROMPT_CREACION,
+    SYSTEM_PROMPT_RESOLUCION,
     SYSTEM_PROMPT_TURNO,
     SemillaCreativa,
     build_creacion_user_prompt,
+    build_image_prompt,
     build_reference_prompt,
     sample_seed,
 )
@@ -158,7 +161,53 @@ def test_system_prompt_fija_regla_de_idioma_bidireccional(prompt: str):
 def test_prompt_version_fue_bumpeada():
     """Pin de la versión activa: cambiar prompts/schema sin bumpear esto (y sin
     agregar fila al changelog en docs/prompts.md) rompe este test a propósito."""
-    assert PROMPT_VERSION == "3.3.0"
+    assert PROMPT_VERSION == "3.4.0"
+
+
+# --- build_image_prompt: anclaje visual de NPCs ------------------------------
+
+_VISUAL_PJ = "Woman around 30, red braided hair, leather armor"
+_ESCENA = "a torchlit dungeon chamber with wet stone walls"
+
+
+def test_build_image_prompt_incluye_npcs_presentes():
+    npc1 = "Old jailer, bald, grey beard, rusted iron keys"
+    npc2 = "Young thief, hooded, green cloak"
+    prompt = build_image_prompt(_VISUAL_PJ, _ESCENA, Genero.FANTASIA, npcs_visuales_en=[npc1, npc2])
+    assert "Also present:" in prompt
+    assert npc1 in prompt and npc2 in prompt
+    # El protagonista y la escena siguen presentes.
+    assert _VISUAL_PJ in prompt
+    assert _ESCENA in prompt
+
+
+def test_build_image_prompt_sin_npcs_equivale_al_actual():
+    """Sin NPCs el prompt no debe ganar la sección 'Also present'."""
+    base = build_image_prompt(_VISUAL_PJ, _ESCENA, Genero.FANTASIA)
+    con_lista_vacia = build_image_prompt(_VISUAL_PJ, _ESCENA, Genero.FANTASIA, npcs_visuales_en=[])
+    con_none = build_image_prompt(_VISUAL_PJ, _ESCENA, Genero.FANTASIA, npcs_visuales_en=None)
+    assert "Also present" not in base
+    assert base == con_lista_vacia == con_none
+
+
+# --- system prompts: consistencia visual de NPCs -----------------------------
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        pytest.param(SYSTEM_PROMPT_TURNO, id="turno"),
+        pytest.param(SYSTEM_PROMPT_RESOLUCION, id="resolucion"),
+    ],
+)
+def test_system_prompt_pide_visual_de_npc_y_presencia(prompt: str):
+    low = prompt.lower()
+    assert "descripcion_visual_en" in low
+    assert "npcs_en_escena" in low
+
+
+def test_max_npcs_anclados_es_positivo():
+    assert MAX_NPCS_ANCLADOS >= 1
 
 
 # --- tiradas: system prompt del turno y prompt de resolución (fase 2) --------

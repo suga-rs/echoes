@@ -9,7 +9,11 @@ from app.models.domain import Genero, Partida
 # SYSTEM_PROMPT_* o los schemas en llm_schema.py. Se loguea en cada llamada al
 # LLM y se persiste en la metadata de cada partida para poder correlacionar
 # calidad/fallos con la versión activa. Ver changelog en docs/prompts.md.
-PROMPT_VERSION = "3.3.0"
+PROMPT_VERSION = "3.4.0"
+
+# Tope de NPCs anclados por texto en una imagen de escena. Más allá de esto el
+# prompt de imagen se infla y el modelo empieza a confundir rasgos entre NPCs.
+MAX_NPCS_ANCLADOS = 2
 
 SYSTEM_PROMPT_TURNO = """\
 Sos el narrador de una aventura de texto interactiva en español rioplatense. \
@@ -167,6 +171,23 @@ El campo necesaria es solo una sugerencia tuya de cuándo la escena es \
 visualmente memorable (primer encuentro con un NPC importante, primera entrada \
 a un escenario impactante, clímax o final). Ponelo en true en esos casos y \
 false en el resto, pero la descripcion_escena_en va siempre.
+
+# NPCs EN LA IMAGEN — CONSISTENCIA VISUAL
+
+Para que los NPCs no cambien de aspecto entre imágenes, su apariencia se fija \
+UNA sola vez y se reutiliza:
+
+1. Al INTRODUCIR un NPC nuevo (actualizaciones_estado.npc_encontrado), además \
+de nombre, descripcion y actitud, emitís descripcion_visual_en: su aspecto \
+VISUAL canónico EN INGLÉS, detallado (edad, etnia, pelo color/largo, ojos, \
+cuerpo, vestimenta con colores y materiales, accesorios). Es el equivalente a \
+la ficha visual del protagonista y se va a reusar en todas sus imágenes.
+
+2. En generar_imagen.npcs_en_escena listás los NOMBRES de los NPCs YA conocidos \
+que están visualmente presentes en la escena de ESTE turno. Solo nombres que ya \
+existen; NO redescribas su aspecto (el sistema reusa su descripcion_visual_en \
+canónica). Dejá la lista vacía si en la escena no hay NPCs. Acordate que \
+descripcion_escena_en describe SOLO el ambiente, nunca a los personajes.
 
 # CRITERIOS PARA estado_aventura.tipo = "finalizada"
 
@@ -586,6 +607,11 @@ o primera persona, MÁX 12 palabras y MÁX 100 caracteres cada una (límite duro
 del schema): son disparadores de acción, no oraciones completas. Actualizá \
 arco (fase_narrativa, tension) y resumen_historia. Mantené coherencia con el \
 estado del mundo. Todos los campos en español rioplatense salvo los `_en`.
+
+Consistencia visual de NPCs: si introducís un NPC nuevo, emití su \
+descripcion_visual_en (aspecto canónico en inglés, detallado). En \
+generar_imagen.npcs_en_escena listá los nombres de los NPCs ya conocidos \
+presentes en la escena (sin redescribir su aspecto); vacío si no hay.
 """
 
 
@@ -645,10 +671,18 @@ def build_image_prompt(
     descripcion_visual_personaje_en: str,
     descripcion_escena_en: str,
     genero: Genero,
+    npcs_visuales_en: list[str] | None = None,
 ) -> str:
     estilo = ESTILO_POR_GENERO[genero]
+    # Anclaje de texto de los NPCs presentes: sus descripciones visuales canónicas
+    # (ya resueltas y topeadas por el servicio) van entre el protagonista y la
+    # escena para fijar su apariencia sin re-imaginarlos en cada imagen.
+    presentes = ""
+    if npcs_visuales_en:
+        presentes = "Also present: " + "; ".join(npcs_visuales_en) + ". "
     return (
         f"Character: {descripcion_visual_personaje_en}. "
+        f"{presentes}"
         f"Scene: {descripcion_escena_en}. "
         f"Style: {estilo}. "
         f"Wide cinematic composition, no text, no watermarks, no logos."

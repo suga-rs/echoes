@@ -65,12 +65,27 @@ TURNO_JSON_SCHEMA: dict[str, Any] = {
                         {"type": "null"},
                         {
                             "type": "object",
-                            "required": ["nombre", "descripcion", "actitud"],
+                            "required": [
+                                "nombre",
+                                "descripcion",
+                                "actitud",
+                                "descripcion_visual_en",
+                            ],
                             "additionalProperties": False,
                             "properties": {
                                 "nombre": {"type": "string"},
                                 "descripcion": {"type": "string", "maxLength": 200},
                                 "actitud": {"enum": ["amistosa", "neutral", "hostil"]},
+                                "descripcion_visual_en": {
+                                    "type": "string",
+                                    "description": (
+                                        "Descripción VISUAL canónica del NPC, en INGLÉS, "
+                                        "detallada (edad, etnia, pelo, ojos, cuerpo, "
+                                        "vestimenta con colores/materiales, accesorios). "
+                                        "Se persiste una sola vez y se reutiliza en cada "
+                                        "imagen donde el NPC aparece."
+                                    ),
+                                },
                             },
                         },
                     ]
@@ -100,6 +115,15 @@ TURNO_JSON_SCHEMA: dict[str, Any] = {
                 "necesaria": {"type": "boolean"},
                 "razon": {"type": "string"},
                 "descripcion_escena_en": {"type": "string"},
+                "npcs_en_escena": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Nombres de NPCs YA conocidos que están visualmente "
+                        "presentes en la escena de este turno. Referenciá nombres "
+                        "existentes (no redescribas su aspecto). Vacío si no hay NPCs."
+                    ),
+                },
             },
         },
         "estado_aventura": {
@@ -301,12 +325,14 @@ class GenerarImagen(BaseModel):
     necesaria: bool
     razon: str | None = None
     descripcion_escena_en: str = ""
+    npcs_en_escena: list[str] = Field(default_factory=list)
 
 
 class NPCEncontrado(BaseModel):
     nombre: str
     descripcion: str
     actitud: str
+    descripcion_visual_en: str = ""
 
 
 class NPCCambio(BaseModel):

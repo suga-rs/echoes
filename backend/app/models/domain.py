@@ -189,6 +189,11 @@ class NPC(BaseModel):
     nombre: str
     descripcion: str
     actitud: Actitud
+    # Descripción visual canónica en inglés, capturada al introducir el NPC y
+    # reutilizada como ancla de texto en cada imagen donde aparece (mantiene su
+    # apariencia consistente entre imágenes). None en NPCs de partidas previas a
+    # este cambio (Cosmos schemaless), tratados como "sin ancla".
+    descripcion_visual_en: str | None = None
 
 
 class WorldState(BaseModel):
@@ -214,6 +219,10 @@ class TurnoHistorial(BaseModel):
     opciones: list[str]
     imagen_url: str | None = None
     descripcion_escena_en: str | None = None
+    # Nombres de NPCs presentes en la escena de este turno, para anclar su
+    # apariencia al generar la imagen (incluida la generación a demanda posterior).
+    # Lista vacía en turnos previos a este cambio (Cosmos schemaless).
+    npcs_en_escena: list[str] = Field(default_factory=list)
     feedback: str | None = None  # señal de calidad del jugador: "incoherente" | "ok"
     # Tirada resuelta en este turno, o None si la acción no requirió un check.
     # Los turnos previos a este cambio (Cosmos schemaless) deserializan como None.
