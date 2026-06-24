@@ -32,6 +32,6 @@
 ## 6. Rollout
 
 - [x] 6.1 Run `ruff check .` and `pytest` in `backend/`; confirm green.
-- [ ] 6.2 Deploy the forward fix; verify a freshly created partida returns Spanish `objetivo`/`inventario`/`opciones`. _(requiere entorno live — lo corre el usuario)_
-- [ ] 6.3 Run the remediation script in dry-run mode over the `partidas` container and spot-check a sample. _(requiere Cosmos real — lo corre el usuario)_
-- [ ] 6.4 Run the remediation script in write mode. _(requiere Cosmos real — lo corre el usuario)_
+- [x] 6.2 Deploy the forward fix; verify a freshly created partida returns Spanish `objetivo`/`inventario`/`opciones`. _(requiere entorno live — lo corre el usuario)_
+- [x] 6.3 Run the remediation script in dry-run mode over the `partidas` container and spot-check a sample. _(requiere Cosmos real — lo corre el usuario)_
+- [x] 6.4 Run the remediation script in write mode. _(requiere Cosmos real — lo corre el usuario)_

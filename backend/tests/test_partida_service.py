@@ -1,5 +1,9 @@
 """Tests del PartidaService con todas las dependencias mockeadas."""
 
+import asyncio
+import json
+import random
+
 import pytest
 from factories import fake_creacion_llm_response, fake_turno_llm_response, metric_points
 
@@ -10,9 +14,26 @@ from app.core.exceptions import (
     PartidaNoEncontradaError,
     RespuestaLLMInvalidaError,
 )
-from app.models.domain import EstadoPartida, FaseNarrativa, Genero, TipoFinal, TurnoHistorial
-from app.services.partida_service import PartidaService
+from app.models.domain import (
+    NPC,
+    Actitud,
+    EstadoPartida,
+    FaseNarrativa,
+    Genero,
+    Habilidad,
+    TipoFinal,
+    TurnoHistorial,
+)
+from app.services import dados
+from app.services.partida_service import PartidaService, resolver_npcs_visuales
 from app.services.prompts import PROMPT_VERSION, build_turno_user_prompt
+
+
+def _fase1_con_tirada(habilidad: str = "destreza", banda: str = "media") -> dict:
+    return {
+        **fake_turno_llm_response(),
+        "requiere_tirada": {"habilidad": habilidad, "banda": banda},
+    }
 
 
 def _es_prompt_de_referencia(prompt: str) -> bool:
@@ -34,6 +55,24 @@ def test_crear_partida_ok(foundry_mock, partida_repo_mock, imagen_repo_mock):
     assert resp.primer_turno.imagen_url == "https://fake.blob/x.png"
     assert len(resp.primer_turno.opciones) == 3
     partida_repo_mock.upsert.assert_called_once()
+
+
+def test_crear_partida_mapea_atributos_al_personaje(
+    foundry_mock, partida_repo_mock, imagen_repo_mock
+):
+    foundry_mock.chat_json_raw.return_value = ("{}", fake_creacion_llm_response())
+    foundry_mock.generar_imagen.return_value = b"\x89PNG" + b"\x00" * 100
+    imagen_repo_mock.subir_imagen.return_value = "https://fake.blob/x.png"
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    svc.crear_partida(Genero.FANTASIA, "una arqueóloga escéptica")
+
+    guardada = partida_repo_mock.upsert.call_args[0][0]
+    attrs = guardada.personaje.atributos
+    assert attrs.inteligencia == 16
+    assert attrs.fuerza == 11
 
 
 def test_crear_partida_persiste_prompt_version(foundry_mock, partida_repo_mock, imagen_repo_mock):
@@ -189,6 +228,185 @@ def test_avanzar_turno_ok_sin_imagen(
     assert resp.imagen_url is None
     assert resp.estado == EstadoPartida.EN_CURSO
     foundry_mock.generar_imagen.assert_not_called()
+
+
+def test_avanzar_turno_sin_tirada_una_sola_llamada(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+    foundry_mock.chat_json_raw.return_value = ("{}", fake_turno_llm_response())
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    svc.avanzar_turno("test-abc-123", "mirar alrededor")
+
+    assert foundry_mock.chat_json_raw.call_count == 1
+    guardada = partida_repo_mock.upsert.call_args[0][0]
+    assert guardada.historial[-1].tirada is None
+
+
+def test_avanzar_turno_con_tirada_hace_dos_llamadas_y_persiste(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+    # Fase 1 declara la tirada; fase 2 narra el desenlace (turno completo normal).
+    foundry_mock.chat_json_raw.side_effect = [
+        ("{}", _fase1_con_tirada(habilidad="destreza", banda="media")),
+        ("{}", fake_turno_llm_response()),
+    ]
+
+    svc = PartidaService(
+        foundry=foundry_mock,
+        partidas=partida_repo_mock,
+        imagenes=imagen_repo_mock,
+        rng=random.Random(123),
+    )
+    svc.avanzar_turno("test-abc-123", "saltar el abismo")
+
+    assert foundry_mock.chat_json_raw.call_count == 2
+    guardada = partida_repo_mock.upsert.call_args[0][0]
+    t = guardada.historial[-1].tirada
+    assert t is not None
+
+    esperado_d20 = dados.tirar_d20(random.Random(123))
+    assert t.habilidad == Habilidad.DESTREZA
+    assert t.dc == 15  # banda media
+    assert t.modificador == 0  # atributos neutrales (10) → +0
+    assert t.d20 == esperado_d20
+    assert t.total == esperado_d20
+    assert t.resultado == dados.clasificar_tirada(d20=esperado_d20, modificador_total=0, dc=15)
+
+
+def _tipos_de_eventos_sse(eventos: list[str]) -> list[str]:
+    return [e.split("event: ", 1)[1].split("\n", 1)[0] for e in eventos]
+
+
+def test_stream_con_tirada_emite_evento_tirada_antes_del_turno(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+    fase1 = json.dumps(_fase1_con_tirada(habilidad="destreza", banda="media"))
+    fase2 = json.dumps(fake_turno_llm_response())
+
+    def _make_gen(payload: str):
+        async def gen(_system: str, _user: str):
+            yield payload
+
+        return gen
+
+    gens = [_make_gen(fase1), _make_gen(fase2)]
+    foundry_mock.chat_streaming_async.side_effect = lambda s, u: gens.pop(0)(s, u)
+
+    svc = PartidaService(
+        foundry=foundry_mock,
+        partidas=partida_repo_mock,
+        imagenes=imagen_repo_mock,
+        rng=random.Random(123),
+    )
+
+    async def _run() -> list[str]:
+        return [e async for e in svc.avanzar_turno_stream("test-abc-123", "saltar el abismo")]
+
+    eventos = asyncio.run(_run())
+    tipos = _tipos_de_eventos_sse(eventos)
+
+    # El evento de la tirada llega y precede al evento `turno` (el desenlace).
+    assert "tirada" in tipos
+    assert tipos.index("tirada") < tipos.index("turno")
+    # El turno se entrega atómicamente: no se emiten tokens parciales.
+    assert "token" not in tipos
+    # Se hicieron las dos llamadas al LLM (fase 1 + fase 2).
+    assert foundry_mock.chat_streaming_async.call_count == 2
+
+    # La tirada quedó persistida en el turno.
+    guardada = partida_repo_mock.upsert.call_args[0][0]
+    assert guardada.historial[-1].tirada is not None
+    assert guardada.historial[-1].tirada.dc == 15
+
+
+def test_stream_fase2_invalida_reintenta_no_streaming_y_no_corta(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    """Si el desenlace streameado viola el schema (p. ej. una opción demasiado
+    larga), el servicio reintenta sin streaming y emite el turno igual, sin
+    cortar con un evento `error`."""
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+    fase1 = json.dumps(_fase1_con_tirada(habilidad="destreza", banda="media"))
+    # Fase 2 streameada inválida: una opción supera el maxLength de 100.
+    fase2_invalida = fake_turno_llm_response()
+    fase2_invalida["opciones"] = ["x" * 101, "Opción válida B", "Opción válida C"]
+
+    def _make_gen(payload: str):
+        async def gen(_system: str, _user: str):
+            yield payload
+
+        return gen
+
+    gens = [_make_gen(fase1), _make_gen(json.dumps(fase2_invalida))]
+    foundry_mock.chat_streaming_async.side_effect = lambda s, u: gens.pop(0)(s, u)
+    # El reintento no-streaming devuelve un turno válido.
+    foundry_mock.chat_json_raw.return_value = ("{}", fake_turno_llm_response())
+
+    svc = PartidaService(
+        foundry=foundry_mock,
+        partidas=partida_repo_mock,
+        imagenes=imagen_repo_mock,
+        rng=random.Random(123),
+    )
+
+    async def _run() -> list[str]:
+        return [e async for e in svc.avanzar_turno_stream("test-abc-123", "saltar el abismo")]
+
+    tipos = _tipos_de_eventos_sse(asyncio.run(_run()))
+
+    # El turno se emitió pese a la fase 2 inválida, y no hubo evento `error`.
+    assert "turno" in tipos
+    assert "error" not in tipos
+    # Se hizo el reintento no-streaming (una llamada a chat_json_raw).
+    assert foundry_mock.chat_json_raw.call_count == 1
+    # El turno persistido usa las opciones válidas del reintento.
+    guardada = partida_repo_mock.upsert.call_args[0][0]
+    assert all(len(o) <= 100 for o in guardada.historial[-1].opciones)
+
+
+def test_stream_sin_tirada_no_emite_evento_tirada(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+
+    async def gen(_system: str, _user: str):
+        yield json.dumps(fake_turno_llm_response())
+
+    foundry_mock.chat_streaming_async.side_effect = lambda s, u: gen(s, u)
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+
+    async def _run() -> list[str]:
+        return [e async for e in svc.avanzar_turno_stream("test-abc-123", "mirar")]
+
+    tipos = _tipos_de_eventos_sse(asyncio.run(_run()))
+    assert "tirada" not in tipos
+    assert foundry_mock.chat_streaming_async.call_count == 1
+    guardada = partida_repo_mock.upsert.call_args[0][0]
+    assert guardada.historial[-1].tirada is None
 
 
 def test_avanzar_turno_normal_no_genera_imagen(
@@ -689,3 +907,161 @@ def test_chokepoint_en_cupo_no_genera_referencia_ni_escena(
     foundry_mock.generar_imagen.assert_not_called()
     foundry_mock.editar_imagen.assert_not_called()
     assert partida_de_ejemplo.personaje.referencia_visual_url is None
+
+
+# --- resolver_npcs_visuales (helper de anclaje de NPCs) ----------------------
+
+
+def _npc(nombre: str, visual: str | None) -> NPC:
+    return NPC(
+        nombre=nombre, descripcion="x", actitud=Actitud.NEUTRAL, descripcion_visual_en=visual
+    )
+
+
+def test_resolver_npcs_visuales_vacio_devuelve_vacio():
+    assert resolver_npcs_visuales([], [_npc("Eldrin", "old hermit")]) == []
+
+
+def test_resolver_npcs_visuales_match_tolerante():
+    npcs = [_npc("Gorad el Carcelero", "bald jailer, rusted keys")]
+    # Distinta capitalización y espacios sobrantes igual resuelven.
+    out = resolver_npcs_visuales(["  gorad EL carcelero "], npcs)
+    assert out == ["bald jailer, rusted keys"]
+
+
+def test_resolver_npcs_visuales_ignora_nombre_alucinado():
+    npcs = [_npc("Eldrin", "old hermit")]
+    assert resolver_npcs_visuales(["Nadie"], npcs) == []
+
+
+def test_resolver_npcs_visuales_ignora_npc_sin_descripcion():
+    npcs = [_npc("Eldrin", None)]
+    assert resolver_npcs_visuales(["Eldrin"], npcs) == []
+
+
+def test_resolver_npcs_visuales_respeta_el_tope():
+    from app.services.prompts import MAX_NPCS_ANCLADOS
+
+    npcs = [_npc(f"NPC{i}", f"visual {i}") for i in range(MAX_NPCS_ANCLADOS + 2)]
+    nombres = [n.nombre for n in npcs]
+    out = resolver_npcs_visuales(nombres, npcs)
+    assert len(out) == MAX_NPCS_ANCLADOS
+
+
+# --- consistencia visual de NPCs en el servicio ------------------------------
+
+
+def _turno_con_npc(visual: str) -> dict:
+    payload = fake_turno_llm_response()
+    payload["actualizaciones_estado"]["npc_encontrado"] = {
+        "nombre": "Gorad",
+        "descripcion": "Un carcelero hostil",
+        "actitud": "hostil",
+        "descripcion_visual_en": visual,
+    }
+    return payload
+
+
+def test_avanzar_turno_persiste_descripcion_visual_del_npc(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+    visual = "Bald jailer, grey beard, rusted iron keys at the belt"
+    foundry_mock.chat_json_raw.return_value = ("{}", _turno_con_npc(visual))
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    svc.avanzar_turno("test-abc-123", "Hablar con el carcelero")
+
+    guardada = partida_repo_mock.upsert.call_args[0][0]
+    npc = next(n for n in guardada.world_state.npcs if n.nombre == "Gorad")
+    assert npc.descripcion_visual_en == visual
+
+
+def test_avanzar_turno_final_ancla_npc_presente_en_el_prompt(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    # NPC ya conocido con visual canónica; el turno final lo declara presente.
+    visual = "Bald jailer, grey beard, rusted iron keys"
+    partida_de_ejemplo.world_state.npcs = [_npc("Gorad", visual)]
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+
+    payload = fake_turno_llm_response(estado="finalizada", final="exito")
+    payload["generar_imagen"]["npcs_en_escena"] = ["Gorad"]
+    foundry_mock.chat_json_raw.return_value = ("{}", payload)
+    foundry_mock.generar_imagen.return_value = b"\x89PNG" + b"\x00" * 100
+    imagen_repo_mock.subir_imagen.return_value = "https://fake.blob/scene.png"
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    svc.avanzar_turno("test-abc-123", "Enfrentar al carcelero")
+
+    prompt = foundry_mock.generar_imagen.call_args[0][0]
+    assert "Also present:" in prompt
+    assert visual in prompt
+
+
+def test_generar_imagen_turno_ancla_npc_guardado_en_el_turno(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    # On-demand: el turno guardó npcs_en_escena; se resuelve contra el estado actual.
+    visual = "Bald jailer, grey beard, rusted iron keys"
+    partida_de_ejemplo.world_state.npcs = [_npc("Gorad", visual)]
+    turno = _turno_con_escena(2)
+    turno.npcs_en_escena = ["Gorad"]
+    partida_de_ejemplo.historial = [turno]
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+    foundry_mock.generar_imagen.return_value = b"\x89PNG" + b"\x00" * 100
+    imagen_repo_mock.subir_imagen.return_value = "https://fake.blob/z.png"
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+    svc.generar_imagen_turno("test-abc-123", 2)
+
+    prompt = foundry_mock.generar_imagen.call_args[0][0]
+    assert visual in prompt
+
+
+def test_stream_final_ancla_npc_presente_en_el_prompt(
+    foundry_mock,
+    partida_repo_mock,
+    imagen_repo_mock,
+    partida_de_ejemplo,
+):
+    visual = "Bald jailer, grey beard, rusted iron keys"
+    partida_de_ejemplo.world_state.npcs = [_npc("Gorad", visual)]
+    partida_repo_mock.get.return_value = partida_de_ejemplo
+
+    payload = fake_turno_llm_response(estado="finalizada", final="exito")
+    payload["generar_imagen"]["npcs_en_escena"] = ["Gorad"]
+
+    async def gen(_system: str, _user: str):
+        yield json.dumps(payload)
+
+    foundry_mock.chat_streaming_async.side_effect = lambda s, u: gen(s, u)
+    foundry_mock.generar_imagen.return_value = b"\x89PNG" + b"\x00" * 100
+    imagen_repo_mock.subir_imagen.return_value = "https://fake.blob/scene.png"
+
+    svc = PartidaService(
+        foundry=foundry_mock, partidas=partida_repo_mock, imagenes=imagen_repo_mock
+    )
+
+    async def _run() -> list[str]:
+        return [e async for e in svc.avanzar_turno_stream("test-abc-123", "Enfrentar al carcelero")]
+
+    asyncio.run(_run())
+
+    prompt = foundry_mock.generar_imagen.call_args[0][0]
+    assert visual in prompt

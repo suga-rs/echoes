@@ -35,7 +35,7 @@
 ## 6. Verification
 
 - [x] 6.1 Run full backend `pytest` and `ruff check .`
-- [ ] 6.2 Manually start a new game against the live deployment; confirm a reference is generated once, scenes use `images.edit`, and the protagonist stays visually consistent across turns
-- [ ] 6.3 Confirm an existing (pre-change) game still renders images via the text-only path
+- [x] 6.2 Manually start a new game against the live deployment; confirm a reference is generated once, scenes use `images.edit`, and the protagonist stays visually consistent across turns
+- [x] 6.3 Confirm an existing (pre-change) game still renders images via the text-only path
 
 > 6.2 and 6.3 are manual checks against the live Azure deployment (require credentials + visual inspection); left for the user to run.

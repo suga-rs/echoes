@@ -13,4 +13,4 @@
 
 - [x] 3.1 Update/extend `src/components/turno-card.test.tsx`: control appears in header for image-less turns, hidden when an image exists; generating shows skeleton; error and limit-reached states render.
 - [x] 3.2 Run `pnpm lint`, `pnpm typecheck`, and frontend tests; fix issues.
-- [ ] 3.3 Manually verify header layout on narrow widths (no awkward wrapping) in light and dark theme.
+- [x] 3.3 Manually verify header layout on narrow widths (no awkward wrapping) in light and dark theme.

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aventuras-backend"
-version = "0.1.0"
+version = "0.5.0"
 description = "Generador de aventuras de texto con IA — backend"
 readme = "README.md"
 requires-python = ">=3.12"

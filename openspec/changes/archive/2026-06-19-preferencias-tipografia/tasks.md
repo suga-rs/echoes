@@ -21,7 +21,7 @@
 
 - [x] 4.1 Component test: changing font/size updates the CSS variables / store; reload reflects persisted values.
 - [x] 4.2 Run `pnpm lint`, `pnpm typecheck`, and frontend tests; fix issues.
-- [ ] 4.3 Manually verify each font (incl. dyslexia option) and each size render in the narrator text, in light and dark theme.
+- [x] 4.3 Manually verify each font (incl. dyslexia option) and each size render in the narrator text, in light and dark theme.
 
 ## 5. Extend font to game-text surfaces
 

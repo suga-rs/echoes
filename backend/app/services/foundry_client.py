@@ -192,20 +192,30 @@ class FoundryClient:
             parsed = None
         return content, parsed
 
-    def generar_imagen(self, prompt: str, size: str = "1536x1024") -> bytes:
+    def generar_imagen(
+        self,
+        prompt: str,
+        size: str = "1536x1024",
+        *,
+        output_format: Literal["jpeg", "png"] = "jpeg",
+    ) -> bytes:
         t0 = time.perf_counter()
+        # output_compression solo aplica a formatos con pérdida (jpeg). En PNG la
+        # salida es sin pérdida: lo usamos para la referencia canónica del
+        # personaje para no apilar una segunda compresión al re-inyectarla en
+        # images.edit (evita la doble pérdida JPEG en cada escena).
+        params: dict = dict(
+            model=self.settings.image_deployment,
+            prompt=prompt,
+            size=size,
+            n=1,
+            quality="medium",
+            output_format=output_format,
+        )
+        if output_format == "jpeg":
+            params["output_compression"] = 80
         try:
-            response = self._with_retries(
-                lambda: self._client.images.generate(
-                    model=self.settings.image_deployment,
-                    prompt=prompt,
-                    size=size,
-                    n=1,
-                    quality="low",
-                    output_format="jpeg",
-                    output_compression=80,
-                )
-            )
+            response = self._with_retries(lambda: self._client.images.generate(**params))
         except Exception as e:
             telemetry.record_llm_error(operation="image", tipo=type(e).__name__)
             logger.exception("Foundry image error")
@@ -244,15 +254,22 @@ class FoundryClient:
         personaje vía images.edit. input_fidelity="high" preserva la identidad
         (cara/atuendo) de la referencia."""
         t0 = time.perf_counter()
+        # Etiquetar la referencia con su tipo real: las partidas nuevas la
+        # almacenan en PNG sin pérdida, pero las viejas pueden tener un JPEG.
+        if reference_bytes.startswith(b"\x89PNG"):
+            ref_name, ref_mime = "reference.png", "image/png"
+        else:
+            ref_name, ref_mime = "reference.jpg", "image/jpeg"
         try:
             response = self._with_retries(
                 lambda: self._client.images.edit(
                     model=self.settings.image_deployment,
-                    image=("reference.jpg", reference_bytes, "image/jpeg"),
+                    image=(ref_name, reference_bytes, ref_mime),
                     prompt=prompt,
                     size=size,
                     n=1,
                     input_fidelity=input_fidelity,
+                    quality="medium",
                     output_format="jpeg",
                     output_compression=80,
                 )

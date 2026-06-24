@@ -61,6 +61,10 @@ def fake_turno_llm_response(
             "tension": tension,
         },
         "resumen_historia": resumen_historia,
+        # Requerido pero nullable: el modelo decide conscientemente null vs tirada.
+        "requiere_tirada": None,
+        # Requerido pero nullable: null = el turno no tuvo costo físico.
+        "consecuencia": None,
     }
 
 
@@ -75,6 +79,14 @@ def fake_creacion_llm_response() -> dict:
                 "with leather elbow patches, khaki cargo pants, brown leather boots."
             ),
             "inventario_inicial": ["linterna", "diario"],
+            "atributos": {
+                "fuerza": 11,
+                "destreza": 13,
+                "constitucion": 12,
+                "inteligencia": 16,
+                "sabiduria": 14,
+                "carisma": 10,
+            },
         },
         "world_state_inicial": {
             "ubicacion_inicial": "Entrada de la cripta",

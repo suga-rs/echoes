@@ -99,3 +99,39 @@ The partidas list SHALL include the `prompt_version` recorded for each partida. 
 
 - **WHEN** the partidas list includes a partida whose stored `prompt_version` is null
 - **THEN** that partida is presented with version `1.0.0`
+
+### Requirement: Creation generates the character's ability scores
+
+The creation contract SHALL additionally produce the six ability scores (`fuerza`, `destreza`, `constitucion`, `inteligencia`, `sabiduria`, `carisma`) for the new character, each an integer in 3–18, derived from the player's character description and the chosen genre so they reflect the described archetype. The narrator SHALL bias the scores toward the description (a described warrior leans high `fuerza`; a scholar leans high `inteligencia`) while keeping every ability within range.
+
+#### Scenario: Scores accompany the new character
+
+- **WHEN** a new game is created
+- **THEN** the creation response includes the six ability scores, each an integer between 3 and 18 inclusive
+- **AND** they are persisted on the partida's character
+
+#### Scenario: Scores reflect the described archetype
+
+- **WHEN** the player's description depicts a physically powerful brawler
+- **THEN** the generated `fuerza` score trends higher than `inteligencia`, while all six remain within 3–18
+
+#### Scenario: Invalid scores are rejected and retried
+
+- **WHEN** the creation response omits an ability or returns a score outside 3–18
+- **THEN** the response fails schema validation and the existing one-retry path feeds the error back before raising
+
+### Requirement: Creation derives the character's hit points
+
+At creation the system SHALL derive the character's maximum hit-point pool (`pv_max`) from the generated Constitución score and SHALL start the character at full health (`pv_actual` equal to `pv_max`) with no active conditions. The derivation SHALL be owned by the system and SHALL NOT be a value supplied by the narrator. The hit points SHALL be persisted on the partida's character alongside the ability scores.
+
+#### Scenario: Hit points derived at creation
+
+- **WHEN** a new game is created and the character's Constitución score is generated
+- **THEN** the system derives `pv_max` from that Constitución score
+- **AND** sets `pv_actual` equal to `pv_max` with no active conditions
+
+#### Scenario: Narrator does not supply hit points
+
+- **WHEN** the creation response is produced
+- **THEN** it contains no narrator-supplied numeric hit-point value
+- **AND** `pv_max` is computed by the system from Constitución

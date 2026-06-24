@@ -152,4 +152,7 @@ def get_state(
         objetivo=p.world_state.objetivo,
         eventos_clave=p.world_state.eventos_clave,
         npcs_conocidos=[n.nombre for n in p.world_state.npcs],
+        pv_actual=p.personaje.pv_actual,
+        pv_max=p.personaje.pv_max,
+        condiciones=list(p.personaje.condiciones),
     )

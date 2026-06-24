@@ -21,9 +21,10 @@ export function Acciones({ opciones }: AccionesProps) {
   const isStreaming = usePartidaStore((s) => s.isStreaming);
   const iniciarStreaming = usePartidaStore((s) => s.iniciarStreaming);
   const appendStreamToken = usePartidaStore((s) => s.appendStreamToken);
+  const iniciarTirada = usePartidaStore((s) => s.iniciarTirada);
   const finalizarStreaming = usePartidaStore((s) => s.finalizarStreaming);
   const actualizarImagenTurno = usePartidaStore((s) => s.actualizarImagenTurno);
-  const actualizarEstadoFinal = usePartidaStore((s) => s.actualizarEstadoFinal);
+  const actualizarVida = usePartidaStore((s) => s.actualizarVida);
   const cancelarStreaming = usePartidaStore((s) => s.cancelarStreaming);
 
   const enviarAccion = async (accion: string) => {
@@ -38,18 +39,32 @@ export function Acciones({ opciones }: AccionesProps) {
     await avanzarTurnoStream(codigo, accion.trim(), {
       onToken: (content) => appendStreamToken(content),
 
+      onTirada: (tirada) => iniciarTirada(tirada),
+
       onTurno: (data) => {
         turnoNum = data.turno;
-        finalizarStreaming({
-          turno: data.turno,
-          accion_jugador: accion.trim(),
-          narrativa: data.narrativa,
-          opciones: data.opciones,
-          imagen_url: null,
-        }, data.imagen_pendiente);
-        if (data.estado === "finalizada") {
-          actualizarEstadoFinal(data.estado, data.final, data.razon_fin);
-        }
+        actualizarVida({
+          pvActual: data.pv_actual,
+          pvMax: data.pv_max,
+          condiciones: data.condiciones,
+          danoRecibido: data.dano_recibido ?? 0,
+        });
+        finalizarStreaming(
+          {
+            turno: data.turno,
+            accion_jugador: accion.trim(),
+            narrativa: data.narrativa,
+            opciones: data.opciones,
+            imagen_url: null,
+            tirada: data.tirada ?? null,
+          },
+          data.imagen_pendiente,
+          // El estado final viaja con el turno para aplicarse al volcarlo (sea
+          // ahora o al cerrar el modal del dado si está retenido).
+          data.estado === "finalizada"
+            ? { estado: data.estado, final: data.final, razon: data.razon_fin }
+            : null,
+        );
         setAccionLibre("");
       },
 

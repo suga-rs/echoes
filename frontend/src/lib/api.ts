@@ -9,6 +9,7 @@ import type {
   ApiError,
   AuthResponse,
   AvatarResponse,
+  Condicion,
   EstadoPartida,
   Partida,
   PartidaResumen,
@@ -17,6 +18,7 @@ import type {
   StartResponse,
   StateResponse,
   TipoFinal,
+  Tirada,
   TurnoResponse,
   Genero,
 } from "./types";
@@ -78,10 +80,16 @@ export interface TurnoStreamData {
   final: TipoFinal | null;
   razon_fin: string | null;
   imagen_pendiente: boolean;
+  tirada?: Tirada | null;
+  pv_actual?: number;
+  pv_max?: number;
+  condiciones?: Condicion[];
+  dano_recibido?: number;
 }
 
 export interface TurnoStreamHandlers {
   onToken: (content: string) => void;
+  onTirada: (tirada: Tirada) => void;
   onTurno: (data: TurnoStreamData) => void;
   onImagen: (url: string) => void;
   onError: (err: ApiClientError) => void;
@@ -136,6 +144,8 @@ export async function avanzarTurnoStream(
             const data = JSON.parse(raw);
             if (currentEvent === "token") {
               handlers.onToken(data.content as string);
+            } else if (currentEvent === "tirada") {
+              handlers.onTirada(data as Tirada);
             } else if (currentEvent === "turno") {
               handlers.onTurno(data as TurnoStreamData);
             } else if (currentEvent === "imagen") {

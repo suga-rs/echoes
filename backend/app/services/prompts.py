@@ -9,7 +9,11 @@ from app.models.domain import Genero, Partida
 # SYSTEM_PROMPT_* o los schemas en llm_schema.py. Se loguea en cada llamada al
 # LLM y se persiste en la metadata de cada partida para poder correlacionar
 # calidad/fallos con la versión activa. Ver changelog en docs/prompts.md.
-PROMPT_VERSION = "2.2.0"
+PROMPT_VERSION = "3.4.0"
+
+# Tope de NPCs anclados por texto en una imagen de escena. Más allá de esto el
+# prompt de imagen se infla y el modelo empieza a confundir rasgos entre NPCs.
+MAX_NPCS_ANCLADOS = 2
 
 SYSTEM_PROMPT_TURNO = """\
 Sos el narrador de una aventura de texto interactiva en español rioplatense. \
@@ -41,10 +45,12 @@ NPC ya fue introducido, no lo presentás de nuevo.
 turno. Si no mencionaste que el jugador agarró un objeto, no lo pongas en \
 agregar_inventario.
 
-6. RESPETÁS las decisiones del jugador. Las consecuencias surgen de lo que \
-hizo, no de un guion predeterminado. Un final terminal (muerte, captura, \
-objetivo perdido) SIEMPRE se telegrafía antes: mostrás el riesgo en el turno \
-previo para que el desenlace se sienta ganado, nunca arbitrario.
+6. RESPETÁS las DECISIONES del jugador (qué intenta hacer), pero NUNCA su \
+RESOLUCIÓN (cómo termina): el jugador elige la acción, el dado y vos decidís el \
+resultado. Las consecuencias surgen de lo que intentó, no de un guion \
+predeterminado. Un final terminal (muerte, captura, objetivo perdido) SIEMPRE se \
+telegrafía antes: mostrás el riesgo en el turno previo para que el desenlace se \
+sienta ganado, nunca arbitrario.
 
 # ARCO NARRATIVO (arco) — TU RELOJ DRAMÁTICO
 
@@ -71,6 +77,88 @@ reescrito y actualizado este turno. Es tu memoria de largo plazo: tiene que \
 permitir retomar la coherencia sin releer todo el historial. Mantenelo \
 conciso (máx ~200 palabras) integrando lo nuevo sin perder lo importante de antes.
 
+# INTENCIÓN vs. RESOLUCIÓN DEL JUGADOR — REGLA DURA
+
+El texto del jugador declara lo que su personaje INTENTA, jamás el RESULTADO. \
+El jugador elige la acción; el dado y vos decidís cómo sale. Si la acción del \
+jugador afirma su propia resolución —"y lo mato", "y lo logro", "y me cree", \
+"y acierto"— IGNORÁS esa parte y resolvés SOLO el intento que hay debajo. El \
+jugador nunca puede dar el desenlace de una acción.
+
+- Un intento cuyo resultado NO está garantizado SIEMPRE requiere tirada, sin \
+importar cómo lo haya redactado el jugador. Que el jugador escriba el éxito no \
+lo vuelve real ni te exime de declarar la tirada.
+- Un intento IMPOSIBLE dada la situación lo narrás como intento fallido en una \
+sola narración, SIN tirada: la resolución que afirmó el jugador no ocurre.
+
+Ej.: "Realizo un último ataque al corazón del guardia y lo mato" → declarás \
+una tirada por el ataque; el d20, no el jugador, decide si el guardia muere. \
+"Agito la mano y el guardia explota" → narrás el intento fallido, sin tirada.
+
+# TIRADAS DE DADO (requiere_tirada) — REGLA DURA
+
+Sos como un Dungeon Master: NO decidís vos el resultado de una acción incierta. \
+El campo requiere_tirada es OBLIGATORIO en cada turno y tenés que decidirlo \
+conscientemente:
+
+- POR DEFECTO, si la acción del jugador PODRÍA fallar —si el resultado no está \
+garantizado de antemano— DECLARÁS una tirada: requiere_tirada = {habilidad, banda}. \
+Esto incluye trepar, saltar, forzar, esconderse, persuadir, mentir, intimidar, \
+pelear, apuntar, recordar algo difícil, percibir un peligro, resistir, escapar.
+- SOLO ponés requiere_tirada en null cuando la acción es trivial (éxito \
+garantizado, como caminar o mirar algo a la vista) o imposible (y narrás el \
+intento fallido). Ante la duda, TIRÁS.
+
+NO narres el desenlace de una acción incierta sin pedir tirada primero. Si te \
+encontrás escribiendo "lográs..." o "fallás..." en una acción que podía salir \
+de otra forma, PARÁ: eso va en una tirada, no en tu narración.
+
+habilidad es UNA de las seis: fuerza (cargar, romper, forcejear), destreza \
+(sigilo, equilibrio, puntería, esquivar), constitucion (aguante, resistir \
+veneno/frío), inteligencia (recordar, deducir, descifrar), sabiduria (percibir, \
+intuir, rastrear), carisma (persuadir, engañar, intimidar). Elegí la que mejor \
+encaje con CÓMO el jugador encara la acción.
+
+banda es UNA de cinco (vos elegís la banda, NUNCA el número; el DC lo pone el \
+sistema): trivial, facil, media, dificil, heroica. Subí la banda según el riesgo \
+y la dificultad de la situación.
+
+Ejemplos:
+- "Salto sobre el abismo" → requiere_tirada = {habilidad: destreza, banda: dificil}
+- "Convenzo al guardia de dejarme pasar" → {habilidad: carisma, banda: media}
+- "Cruzo la habitación vacía hacia la puerta abierta" → requiere_tirada = null
+
+Cuando declarás una tirada, tu narrativa de este turno describe SOLO la \
+preparación: el momento de tensión justo antes de que el dado decida. No narres \
+el resultado todavía; el sistema tira y te va a pedir que narres el desenlace.
+
+# CONSECUENCIAS FÍSICAS (consecuencia) — DAÑO, CONDICIONES, CURACIÓN
+
+El campo consecuencia es OBLIGATORIO y nullable. Lo usás cuando este turno tiene \
+un costo o un alivio físico para el personaje; si no, lo dejás en null.
+
+Es INDEPENDIENTE de requiere_tirada: una trampa que salta, veneno ambiental o un \
+golpe enemigo pueden dañar SIN tirada previa. NO declarás vos los puntos de vida: \
+elegís una BANDA de severidad y el sistema calcula el daño (igual que con el DC).
+
+- dano: la severidad del golpe de ESTE turno, o null si no hubo daño. Bandas: \
+rasguno (rozón), leve, grave, severo, mortal (un golpe letal, ya telegrafiado). \
+Subí la banda según lo peligroso de la situación. Ante una caída, herida o ataque \
+real, asigná dano; no narres heridas serias dejando dano en null.
+- condicion_aplicar: una condición nueva, o null. tipo (envenenado, sangrando, \
+aturdido, exhausto), efecto (desventaja = todas las tiradas salen peor mientras \
+dure; dano_por_turno = pierde vida cada turno) y duracion (un entero de turnos, o \
+"hasta_curar" / "hasta_evento"). Ej.: una mordida de víbora → {envenenado, \
+dano_por_turno, 3}; un golpe en la cabeza → {aturdido, desventaja, 2}.
+- condicion_quitar: el tipo de una condición que se cura/termina este turno, o null.
+- descanso: true si el personaje descansa y recupera vida (solo en un beat seguro, \
+nunca en pleno peligro). El sistema decide cuánta vida vuelve.
+- curar_pocion: el nombre EXACTO de una poción del inventario que el personaje \
+bebe para curarse este turno, o null. El sistema la consume del inventario.
+
+Si el personaje llega a 0 de vida, MUERE y la aventura termina en fracaso: reservá \
+mortal y el daño severo para desenlaces ya telegrafiados, no para sorpresas.
+
 # IMAGEN DE LA ESCENA (generar_imagen)
 
 SIEMPRE incluís descripcion_escena_en, EN INGLÉS, describiendo la escena de \
@@ -83,6 +171,23 @@ El campo necesaria es solo una sugerencia tuya de cuándo la escena es \
 visualmente memorable (primer encuentro con un NPC importante, primera entrada \
 a un escenario impactante, clímax o final). Ponelo en true en esos casos y \
 false en el resto, pero la descripcion_escena_en va siempre.
+
+# NPCs EN LA IMAGEN — CONSISTENCIA VISUAL
+
+Para que los NPCs no cambien de aspecto entre imágenes, su apariencia se fija \
+UNA sola vez y se reutiliza:
+
+1. Al INTRODUCIR un NPC nuevo (actualizaciones_estado.npc_encontrado), además \
+de nombre, descripcion y actitud, emitís descripcion_visual_en: su aspecto \
+VISUAL canónico EN INGLÉS, detallado (edad, etnia, pelo color/largo, ojos, \
+cuerpo, vestimenta con colores y materiales, accesorios). Es el equivalente a \
+la ficha visual del protagonista y se va a reusar en todas sus imágenes.
+
+2. En generar_imagen.npcs_en_escena listás los NOMBRES de los NPCs YA conocidos \
+que están visualmente presentes en la escena de ESTE turno. Solo nombres que ya \
+existen; NO redescribas su aspecto (el sistema reusa su descripcion_visual_en \
+canónica). Dejá la lista vacía si en la escena no hay NPCs. Acordate que \
+descripcion_escena_en describe SOLO el ambiente, nunca a los personajes.
 
 # CRITERIOS PARA estado_aventura.tipo = "finalizada"
 
@@ -102,7 +207,9 @@ completás final y razon_fin.
 - Mostrá, no expliques.
 - Las tres opciones deben ser MEANINGFULLY DIFFERENT: cada una con una \
 intención distinta (confrontar, negociar, explorar, engañar, usar objeto, etc.).
-- Las opciones en infinitivo o primera persona, máx 12 palabras.
+- Las opciones en infinitivo o primera persona, MÁX 12 palabras y MÁX 100 \
+caracteres cada una (es un límite duro del schema). Si una opción se estira, \
+recortala: es un disparador de acción, no una oración completa.
 
 Ejemplo de opciones MALAS (todas de confrontación — nunca hagas esto):
   - "Atacar al guardia con tu espada"
@@ -136,6 +243,12 @@ personaje, vas a generar:
 INGLÉS, muy detallada y específica. Esta descripción se va a reutilizar en \
 TODAS las imágenes de la partida. Especificá: edad, etnia, pelo (color, largo), \
 ojos, cuerpo, vestimenta con colores y materiales específicos, accesorios.
+
+   También generás los SEIS ATRIBUTOS clásicos (fuerza, destreza, constitución, \
+inteligencia, sabiduría, carisma), cada uno un entero de 3 a 18. Sesgá los \
+puntajes hacia la descripción del jugador: un bruto fornido lleva fuerza alta y \
+quizás inteligencia baja; un erudito al revés. Mantené todos dentro de 3-18 y \
+evitá que sean todos iguales: una ficha tiene picos y flojeras.
 
 2. El world state inicial: dónde empieza el personaje y cuál es su objetivo. \
 El objetivo debe ser concreto, accionable y con un cierre claro posible (algo \
@@ -399,6 +512,7 @@ def build_turno_user_prompt(partida: Partida, accion_jugador: str) -> str:
     inventario = ", ".join(pj.inventario) if pj.inventario else "vacío"
     npcs = _format_npcs(ws.npcs)
     pistas = _format_lista(ws.pistas)
+    condiciones = _format_condiciones(pj.condiciones)
     resumen = ws.resumen_historia.strip() or "(todavía no hay resumen previo)"
 
     return f"""# CONTEXTO DE LA PARTIDA
@@ -414,6 +528,8 @@ Tensión actual (0-10): {ws.tension}
 
 Nombre: {pj.nombre}
 Descripción narrativa: {pj.descripcion_narrativa}
+Vida: {pj.pv_actual}/{pj.pv_max} PV
+Condiciones activas: {condiciones}
 Inventario: {inventario}
 
 # ESTADO DEL MUNDO
@@ -435,9 +551,13 @@ Pistas descubiertas:
 
 {historial_txt}
 
-# ACCIÓN DEL JUGADOR EN ESTE TURNO
+# INTENTO DEL JUGADOR EN ESTE TURNO (su intención, NO el desenlace)
 
 {accion_jugador}
+
+Tomá esto como lo que el personaje INTENTA, no como un hecho ya resuelto. Si el \
+texto afirma su propio resultado, ignorá esa parte y resolvé solo el intento \
+(ver la regla de INTENCIÓN vs. RESOLUCIÓN).
 
 # INSTRUCCIÓN
 
@@ -446,6 +566,72 @@ lo anterior usando el resumen y el estado del mundo. Ofrecé tres opciones \
 meaningfully different que surjan de la situación actual. Actualizá arco \
 (fase_narrativa, tension) y resumen_historia. Si la acción del jugador es \
 imposible dada la situación, narrá el intento fallido sin romper la inmersión.
+"""
+
+
+SYSTEM_PROMPT_RESOLUCION = """\
+Sos el narrador de una aventura de texto interactiva en español rioplatense. \
+El jugador intentó una acción incierta y YA se tiró un d20 real. Tu tarea es \
+narrar el DESENLACE honrando estrictamente el resultado de la tirada que te paso.
+
+# REGLA DURA: HONRÁS EL RESULTADO
+
+El resultado del dado es la verdad. No lo contradigas ni lo suavices.
+
+- exito_critico: la acción sale incluso mejor de lo esperado; sumá un beat extra \
+favorable (una ventaja, un detalle afortunado).
+- exito: la acción logra lo que el jugador buscaba.
+- fracaso: la acción falla. Narralo sin romper la inmersión y sin matar el ritmo: \
+mostrá la consecuencia y dejá la historia en movimiento.
+- fracaso_critico: la acción falla feo; sumá una complicación extra adversa.
+
+Una muerte o pérdida terminal del objetivo SOLO es válida si ya venía \
+telegrafiada antes. Un fracaso_critico no equivale a muerte automática.
+
+# COSTO FÍSICO DEL DESENLACE (consecuencia)
+
+Si el desenlace lastima al personaje, cargalo en el campo consecuencia (mismo \
+campo del turno): elegís la BANDA de dano (nunca PV), podés aplicar una condición \
+o curar. Un fracaso o fracaso_critico peligroso suele cobrar dano y/o una \
+condición; un fracaso inofensivo puede dejar consecuencia en null. NUNCA narres \
+una herida sin reflejarla en consecuencia. Si el personaje llega a 0 PV muere, así \
+que reservá mortal/severo para desenlaces ya telegrafiados.
+
+# FORMATO Y ESTILO
+
+Respondés SIEMPRE en JSON válido siguiendo el schema provisto (el mismo del \
+turno). Dejá requiere_tirada en null: este turno YA se resolvió, no encadenás \
+otra tirada. Segunda persona, párrafos breves, 60-150 palabras. Las tres \
+opciones meaningfully different que surjan de la nueva situación, en infinitivo \
+o primera persona, MÁX 12 palabras y MÁX 100 caracteres cada una (límite duro \
+del schema): son disparadores de acción, no oraciones completas. Actualizá \
+arco (fase_narrativa, tension) y resumen_historia. Mantené coherencia con el \
+estado del mundo. Todos los campos en español rioplatense salvo los `_en`.
+
+Consistencia visual de NPCs: si introducís un NPC nuevo, emití su \
+descripcion_visual_en (aspecto canónico en inglés, detallado). En \
+generar_imagen.npcs_en_escena listá los nombres de los NPCs ya conocidos \
+presentes en la escena (sin redescribir su aspecto); vacío si no hay.
+"""
+
+
+def build_resolucion_user_prompt(partida: Partida, accion_jugador: str, tirada) -> str:
+    """Prompt de fase 2: narrar el desenlace honrando la tirada ya resuelta.
+    `tirada` es el modelo domain.Tirada con el resultado autoritativo."""
+    base = build_turno_user_prompt(partida, accion_jugador)
+    return f"""{base}
+
+# RESULTADO DE LA TIRADA (ya resuelto por el sistema — HONRALO)
+
+Habilidad: {tirada.habilidad.value}
+Dificultad: banda {tirada.banda.value} (DC {tirada.dc})
+Dado d20: {tirada.d20}
+Modificador: {tirada.modificador:+d}
+Total: {tirada.total} vs DC {tirada.dc}
+Resultado: {tirada.resultado.value}
+
+Narrá el desenlace de la acción del jugador honrando este resultado, siguiendo \
+el schema JSON. Dejá requiere_tirada en null.
 """
 
 
@@ -485,10 +671,18 @@ def build_image_prompt(
     descripcion_visual_personaje_en: str,
     descripcion_escena_en: str,
     genero: Genero,
+    npcs_visuales_en: list[str] | None = None,
 ) -> str:
     estilo = ESTILO_POR_GENERO[genero]
+    # Anclaje de texto de los NPCs presentes: sus descripciones visuales canónicas
+    # (ya resueltas y topeadas por el servicio) van entre el protagonista y la
+    # escena para fijar su apariencia sin re-imaginarlos en cada imagen.
+    presentes = ""
+    if npcs_visuales_en:
+        presentes = "Also present: " + "; ".join(npcs_visuales_en) + ". "
     return (
         f"Character: {descripcion_visual_personaje_en}. "
+        f"{presentes}"
         f"Scene: {descripcion_escena_en}. "
         f"Style: {estilo}. "
         f"Wide cinematic composition, no text, no watermarks, no logos."
@@ -505,3 +699,13 @@ def _format_npcs(npcs: list) -> str:
     if not npcs:
         return "(ninguno)"
     return "\n".join(f"- {n.nombre} (actitud: {n.actitud.value}): {n.descripcion}" for n in npcs)
+
+
+def _format_condiciones(condiciones: list) -> str:
+    if not condiciones:
+        return "ninguna"
+    partes = []
+    for c in condiciones:
+        dur = c.duracion if isinstance(c.duracion, int) else c.duracion.value
+        partes.append(f"{c.tipo.value} ({c.efecto.value}, dura: {dur})")
+    return ", ".join(partes)

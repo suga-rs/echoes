@@ -9,11 +9,61 @@ export type EstadoPartida = "en_curso" | "finalizada";
 
 export type TipoFinal = "exito" | "fracaso" | "ambiguo";
 
+export type Habilidad =
+  | "fuerza"
+  | "destreza"
+  | "constitucion"
+  | "inteligencia"
+  | "sabiduria"
+  | "carisma";
+
+export type Banda = "trivial" | "facil" | "media" | "dificil" | "heroica";
+
+export type ResultadoTirada =
+  | "exito_critico"
+  | "exito"
+  | "fracaso"
+  | "fracaso_critico";
+
+export interface Atributos {
+  fuerza: number;
+  destreza: number;
+  constitucion: number;
+  inteligencia: number;
+  sabiduria: number;
+  carisma: number;
+}
+
+export interface Tirada {
+  habilidad: Habilidad;
+  banda: Banda;
+  dc: number;
+  d20: number;
+  modificador: number;
+  total: number;
+  resultado: ResultadoTirada;
+}
+
+export type EfectoCondicion = "desventaja" | "dano_por_turno";
+
+export interface Condicion {
+  tipo: string;
+  efecto: EfectoCondicion;
+  // Entero de turnos restantes, o "hasta_curar" / "hasta_evento".
+  duracion: number | string;
+}
+
 export interface Personaje {
   nombre: string;
   descripcion_narrativa: string;
   descripcion_visual_en: string;
   inventario: string[];
+  // Partidas previas al sistema de tiradas no traen atributos.
+  atributos?: Atributos;
+  // Puntos de vida y condiciones (Hito 2). Partidas previas deserializan a tope.
+  pv_actual?: number;
+  pv_max?: number;
+  condiciones?: Condicion[];
 }
 
 export interface TurnoResponse {
@@ -24,6 +74,11 @@ export interface TurnoResponse {
   estado: EstadoPartida;
   final: TipoFinal | null;
   razon_fin: string | null;
+  tirada?: Tirada | null;
+  pv_actual?: number;
+  pv_max?: number;
+  condiciones?: Condicion[];
+  dano_recibido?: number;
 }
 
 export interface StartResponse {
@@ -43,6 +98,9 @@ export interface StateResponse {
   objetivo: string;
   eventos_clave: string[];
   npcs_conocidos: string[];
+  pv_actual?: number;
+  pv_max?: number;
+  condiciones?: Condicion[];
 }
 
 export interface TurnoHistorial {
@@ -52,6 +110,7 @@ export interface TurnoHistorial {
   opciones: string[];
   imagen_url: string | null;
   feedback?: string | null;
+  tirada?: Tirada | null;
 }
 
 export interface Partida {

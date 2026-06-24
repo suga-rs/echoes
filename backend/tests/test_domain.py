@@ -4,11 +4,14 @@ import pytest
 from pydantic import ValidationError
 
 from app.models.domain import (
+    NPC,
+    Actitud,
     Genero,
     MetadataPartida,
     PartidaResumen,
     Personaje,
     StartPartidaRequest,
+    TurnoHistorial,
 )
 
 
@@ -107,3 +110,37 @@ def test_metadata_legacy_sin_flag_referencia_default_false():
         {"genero": "fantasía", "creada_en": "2026-06-16T00:00:00Z"}
     )
     assert meta.usa_referencia_visual is False
+
+
+# --- Consistencia visual de NPCs (retrocompat) -------------------------------
+
+
+def test_npc_legacy_sin_descripcion_visual_default_none():
+    # NPC previo al cambio: sin el campo, deserializa como None ("sin ancla").
+    npc = NPC.model_validate(
+        {"nombre": "Eldrin", "descripcion": "Un ermitaño", "actitud": "neutral"}
+    )
+    assert npc.descripcion_visual_en is None
+
+
+def test_npc_acepta_descripcion_visual():
+    npc = NPC(
+        nombre="Eldrin",
+        descripcion="Un ermitaño",
+        actitud=Actitud.NEUTRAL,
+        descripcion_visual_en="Old hermit, white beard, grey robe",
+    )
+    assert npc.descripcion_visual_en == "Old hermit, white beard, grey robe"
+
+
+def test_turno_historial_legacy_sin_npcs_en_escena_default_lista_vacia():
+    # Turno previo al cambio: sin el campo, deserializa como lista vacía.
+    turno = TurnoHistorial.model_validate(
+        {
+            "turno": 2,
+            "accion_jugador": "avanzar",
+            "narrativa": "Avanzás por el pasillo.",
+            "opciones": ["a", "b", "c"],
+        }
+    )
+    assert turno.npcs_en_escena == []

@@ -36,4 +36,4 @@
 
 - [x] 6.1 Backend: `ruff check . && ruff format . && pytest` all green
 - [x] 6.2 Frontend: `pnpm lint && pnpm typecheck && pnpm build` all green
-- [ ] 6.3 Manual smoke: create games with/without player premise+tone and confirm name/premise/tone variety across runs; confirm partidas list shows versions (legacy → 1.0.0)
+- [x] 6.3 Manual smoke: create games with/without player premise+tone and confirm name/premise/tone variety across runs; confirm partidas list shows versions (legacy → 1.0.0)
