@@ -138,6 +138,60 @@ def test_turno_invalido_falla(payload: dict):
         validate(payload, TURNO_JSON_SCHEMA)
 
 
+# ----------------------------------------------------- TURNO: requiere_tirada (fase 1)
+
+
+def test_turno_requiere_tirada_null_es_valido():
+    # Una acción trivial/imposible declara requiere_tirada = null (presente, no ausente).
+    payload = fake_turno_llm_response()
+    assert payload["requiere_tirada"] is None
+    validate(payload, TURNO_JSON_SCHEMA)
+    modelo = TurnoLLMResponse.model_validate(payload)
+    assert modelo.requiere_tirada is None
+
+
+def test_turno_omitir_requiere_tirada_falla():
+    # El campo es REQUERIDO (aunque nullable): omitirlo del todo es inválido.
+    # Forzar su presencia es la palanca para que el modelo deje de ignorarlo.
+    with pytest.raises(ValidationError):
+        validate(_sin(fake_turno_llm_response(), ["requiere_tirada"]), TURNO_JSON_SCHEMA)
+
+
+def test_turno_con_requiere_tirada_valido():
+    payload = _con(
+        fake_turno_llm_response(),
+        ["requiere_tirada"],
+        {"habilidad": "destreza", "banda": "media"},
+    )
+    validate(payload, TURNO_JSON_SCHEMA)
+    modelo = TurnoLLMResponse.model_validate(payload)
+    assert modelo.requiere_tirada is not None
+    assert modelo.requiere_tirada.habilidad == "destreza"
+    assert modelo.requiere_tirada.banda == "media"
+
+
+def test_turno_requiere_tirada_nula_valida():
+    payload = _con(fake_turno_llm_response(), ["requiere_tirada"], None)
+    validate(payload, TURNO_JSON_SCHEMA)
+    assert TurnoLLMResponse.model_validate(payload).requiere_tirada is None
+
+
+@pytest.mark.parametrize(
+    "tirada",
+    [
+        pytest.param({"habilidad": "magia", "banda": "media"}, id="habilidad-invalida"),
+        pytest.param({"habilidad": "destreza", "banda": "imposible"}, id="banda-invalida"),
+        pytest.param({"habilidad": "destreza"}, id="falta-banda"),
+        pytest.param({"banda": "media"}, id="falta-habilidad"),
+        pytest.param({"habilidad": "destreza", "banda": "media", "dc": 15}, id="dc-no-permitido"),
+    ],
+)
+def test_turno_requiere_tirada_invalida_falla(tirada: dict):
+    payload = _con(fake_turno_llm_response(), ["requiere_tirada"], tirada)
+    with pytest.raises(ValidationError):
+        validate(payload, TURNO_JSON_SCHEMA)
+
+
 # --------------------------------------------------------------------------- CREACION
 
 
@@ -147,6 +201,18 @@ def test_creacion_baseline_valido():
     modelo = CreacionLLMResponse.model_validate(payload)
     assert modelo.personaje.nombre == "Lyra"
     assert len(modelo.primera_escena.opciones) == 3
+
+
+def test_creacion_incluye_los_seis_atributos():
+    payload = fake_creacion_llm_response()
+    modelo = CreacionLLMResponse.model_validate(payload)
+    attrs = modelo.personaje.atributos
+    assert attrs.fuerza == 11
+    assert attrs.destreza == 13
+    assert attrs.constitucion == 12
+    assert attrs.inteligencia == 16
+    assert attrs.sabiduria == 14
+    assert attrs.carisma == 10
 
 
 CREACION_INVALIDOS = [
@@ -174,6 +240,21 @@ CREACION_INVALIDOS = [
         id="visual-corta",
     ),
     pytest.param(_con(fake_creacion_llm_response(), ["foo"], "bar"), id="clave-extra-raiz"),
+    pytest.param(
+        _sin(fake_creacion_llm_response(), ["personaje", "atributos"]), id="falta-atributos"
+    ),
+    pytest.param(
+        _sin(fake_creacion_llm_response(), ["personaje", "atributos", "fuerza"]),
+        id="falta-una-habilidad",
+    ),
+    pytest.param(
+        _con(fake_creacion_llm_response(), ["personaje", "atributos", "fuerza"], 19),
+        id="atributo-sobre-18",
+    ),
+    pytest.param(
+        _con(fake_creacion_llm_response(), ["personaje", "atributos", "fuerza"], 2),
+        id="atributo-bajo-3",
+    ),
 ]
 
 

@@ -91,12 +91,20 @@ describe("avanzarTurnoStream", () => {
     vi.stubGlobal("fetch", vi.fn(async () => sseResponse(chunks)));
 
     const onToken = vi.fn();
+    const onTirada = vi.fn();
     const onTurno = vi.fn();
     const onImagen = vi.fn();
     const onError = vi.fn();
     const onDone = vi.fn();
 
-    await avanzarTurnoStream("abc", "ir", { onToken, onTurno, onImagen, onError, onDone });
+    await avanzarTurnoStream("abc", "ir", {
+      onToken,
+      onTirada,
+      onTurno,
+      onImagen,
+      onError,
+      onDone,
+    });
 
     expect(onToken.mock.calls.map((c) => c[0])).toEqual(["Hola", " mundo"]);
     expect(onTurno).toHaveBeenCalledWith(
@@ -105,6 +113,45 @@ describe("avanzarTurnoStream", () => {
     expect(onImagen).toHaveBeenCalledWith("http://img/2.png");
     expect(onDone).toHaveBeenCalledTimes(1);
     expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("dispara onTirada con el bloque de la tirada antes del turno", async () => {
+    const tirada = {
+      habilidad: "destreza",
+      banda: "media",
+      dc: 15,
+      d20: 14,
+      modificador: 3,
+      total: 17,
+      resultado: "exito",
+    };
+    const chunks = [
+      'event: token\ndata: {"content": "Saltás"}\n\n',
+      `event: tirada\ndata: ${JSON.stringify(tirada)}\n\n`,
+      'event: token\ndata: {"content": "Lográs cruzar"}\n\n',
+      'event: turno\ndata: {"turno": 3, "narrativa": "N", "opciones": ["a","b","c"],' +
+        ' "estado": "en_curso", "final": null, "razon_fin": null, "imagen_pendiente": false,' +
+        ` "tirada": ${JSON.stringify(tirada)}}\n\n`,
+      "event: done\ndata: {}\n\n",
+    ];
+    vi.stubGlobal("fetch", vi.fn(async () => sseResponse(chunks)));
+
+    const onTirada = vi.fn();
+    const onTurno = vi.fn();
+    await avanzarTurnoStream("abc", "saltar", {
+      onToken: vi.fn(),
+      onTirada,
+      onTurno,
+      onImagen: vi.fn(),
+      onError: vi.fn(),
+      onDone: vi.fn(),
+    });
+
+    expect(onTirada).toHaveBeenCalledOnce();
+    expect(onTirada.mock.calls[0][0]).toMatchObject({ d20: 14, total: 17, resultado: "exito" });
+    expect(onTirada.mock.invocationCallOrder[0]).toBeLessThan(
+      onTurno.mock.invocationCallOrder[0],
+    );
   });
 
   it("llama onError si la respuesta no es ok", async () => {
@@ -121,6 +168,7 @@ describe("avanzarTurnoStream", () => {
     const onError = vi.fn();
     await avanzarTurnoStream("abc", "ir", {
       onToken: vi.fn(),
+      onTirada: vi.fn(),
       onTurno: vi.fn(),
       onImagen: vi.fn(),
       onError,

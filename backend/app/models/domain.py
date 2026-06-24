@@ -36,11 +36,80 @@ class FaseNarrativa(StrEnum):
     RESOLUCION = "resolucion"
 
 
+class Habilidad(StrEnum):
+    """Las seis habilidades clásicas de D&D que puede nombrar una tirada."""
+
+    FUERZA = "fuerza"
+    DESTREZA = "destreza"
+    CONSTITUCION = "constitucion"
+    INTELIGENCIA = "inteligencia"
+    SABIDURIA = "sabiduria"
+    CARISMA = "carisma"
+
+
+class Banda(StrEnum):
+    """Banda de dificultad declarada por el narrador. El sistema mapea cada
+    banda a un DC fijo (ver app.services.dados); el narrador nunca da un número."""
+
+    TRIVIAL = "trivial"
+    FACIL = "facil"
+    MEDIA = "media"
+    DIFICIL = "dificil"
+    HEROICA = "heroica"
+
+
+class ResultadoTirada(StrEnum):
+    EXITO_CRITICO = "exito_critico"
+    EXITO = "exito"
+    FRACASO = "fracaso"
+    FRACASO_CRITICO = "fracaso_critico"
+
+
+class Atributos(BaseModel):
+    """Las seis habilidades clásicas (3-18). El modificador es el estándar de
+    D&D: floor((score-10)/2). Las partidas previas a este cambio (sin el bloque)
+    deserializan con los seis en 10 (+0) vía el default en Personaje."""
+
+    fuerza: int = Field(ge=3, le=18)
+    destreza: int = Field(ge=3, le=18)
+    constitucion: int = Field(ge=3, le=18)
+    inteligencia: int = Field(ge=3, le=18)
+    sabiduria: int = Field(ge=3, le=18)
+    carisma: int = Field(ge=3, le=18)
+
+    def modificador(self, habilidad: "Habilidad") -> int:
+        import math
+
+        return math.floor((getattr(self, habilidad.value) - 10) / 2)
+
+    @classmethod
+    def neutral(cls) -> "Atributos":
+        return cls(
+            fuerza=10, destreza=10, constitucion=10, inteligencia=10, sabiduria=10, carisma=10
+        )
+
+
+class Tirada(BaseModel):
+    """Registro de una tirada resuelta, persistido en el turno. El d20 es la
+    fuente de verdad (tirado server-side); la animación solo lo muestra."""
+
+    habilidad: Habilidad
+    banda: Banda
+    dc: int
+    d20: int
+    modificador: int
+    total: int
+    resultado: ResultadoTirada
+
+
 class Personaje(BaseModel):
     nombre: str
     descripcion_narrativa: str
     descripcion_visual_en: str
     inventario: list[str] = Field(default_factory=list)
+    # Ficha de seis atributos. Las partidas previas a este cambio (Cosmos
+    # schemaless) deserializan con los seis en 10 (+0) y siguen jugables.
+    atributos: Atributos = Field(default_factory=Atributos.neutral)
     # URL de la imagen de referencia canónica del personaje (retrato de cuerpo
     # entero, fondo neutro). Se genera una sola vez por partida y se reutiliza
     # como ancla visual en cada imagen de escena vía images.edit. None hasta que
@@ -78,6 +147,9 @@ class TurnoHistorial(BaseModel):
     imagen_url: str | None = None
     descripcion_escena_en: str | None = None
     feedback: str | None = None  # señal de calidad del jugador: "incoherente" | "ok"
+    # Tirada resuelta en este turno, o None si la acción no requirió un check.
+    # Los turnos previos a este cambio (Cosmos schemaless) deserializan como None.
+    tirada: Tirada | None = None
 
 
 class MetadataPartida(BaseModel):
@@ -142,6 +214,8 @@ class TurnoResponse(BaseModel):
     estado: EstadoPartida
     final: TipoFinal | None = None
     razon_fin: str | None = None
+    # Tirada resuelta en este turno, o None si la acción no requirió un check.
+    tirada: Tirada | None = None
 
 
 class StartResponse(BaseModel):

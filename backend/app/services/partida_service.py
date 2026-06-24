@@ -3,6 +3,7 @@
 import asyncio
 import contextlib
 import json
+import random
 import secrets
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
@@ -25,15 +26,19 @@ from app.core.logging import get_logger
 from app.models.domain import (
     NPC,
     Actitud,
+    Atributos,
+    Banda,
     EstadoPartida,
     FaseNarrativa,
     Genero,
+    Habilidad,
     MetadataPartida,
     Partida,
     PartidaResumen,
     Personaje,
     StartResponse,
     TipoFinal,
+    Tirada,
     TurnoHistorial,
     TurnoResponse,
     WorldState,
@@ -42,18 +47,22 @@ from app.models.llm_schema import (
     CREACION_JSON_SCHEMA,
     TURNO_JSON_SCHEMA,
     CreacionLLMResponse,
+    RequiereTirada,
     TurnoLLMResponse,
 )
 from app.repositories.imagen_repo import ImagenRepository
 from app.repositories.partida_repo import PartidaRepository
+from app.services import dados
 from app.services.foundry_client import FoundryClient
 from app.services.prompts import (
     PROMPT_VERSION,
     SYSTEM_PROMPT_CREACION,
+    SYSTEM_PROMPT_RESOLUCION,
     SYSTEM_PROMPT_TURNO,
     build_creacion_user_prompt,
     build_image_prompt,
     build_reference_prompt,
+    build_resolucion_user_prompt,
     build_retry_user_prompt,
     build_turno_user_prompt,
     sample_seed,
@@ -71,11 +80,15 @@ class PartidaService:
         partidas: PartidaRepository | None = None,
         imagenes: ImagenRepository | None = None,
         settings: Settings | None = None,
+        rng: random.Random | None = None,
     ):
         self.settings = settings or get_settings()
         self.foundry = foundry or FoundryClient(self.settings)
         self.partidas = partidas or PartidaRepository(self.settings)
         self.imagenes = imagenes or ImagenRepository(self.settings)
+        # Fuente de azar de los dados. Inyectable para tests deterministas; en
+        # producción una fuente fresca por servicio.
+        self._rng = rng or random.Random()
 
     @telemetry.traced("crear_partida")
     def crear_partida(
@@ -104,6 +117,14 @@ class PartidaService:
             descripcion_narrativa=creacion.personaje.descripcion_narrativa,
             descripcion_visual_en=creacion.personaje.descripcion_visual_en,
             inventario=list(creacion.personaje.inventario_inicial),
+            atributos=Atributos(
+                fuerza=creacion.personaje.atributos.fuerza,
+                destreza=creacion.personaje.atributos.destreza,
+                constitucion=creacion.personaje.atributos.constitucion,
+                inteligencia=creacion.personaje.atributos.inteligencia,
+                sabiduria=creacion.personaje.atributos.sabiduria,
+                carisma=creacion.personaje.atributos.carisma,
+            ),
         )
         world_state = WorldState(
             ubicacion_actual=creacion.world_state_inicial.ubicacion_inicial,
@@ -195,6 +216,17 @@ class PartidaService:
             system, user, TURNO_JSON_SCHEMA, TurnoLLMResponse
         )
 
+        # Fase 2: si el narrador declaró una tirada, tiramos un d20 real y le
+        # pedimos que narre el desenlace honrando el resultado. La narración de
+        # la fase 1 (la preparación) se descarta; la fase 2 es el turno autoritativo.
+        tirada = None
+        if turno_llm.requiere_tirada is not None:
+            tirada = self._resolver_tirada(partida, turno_llm.requiere_tirada)
+            user2 = build_resolucion_user_prompt(partida, accion, tirada)
+            turno_llm = self._invocar_llm_con_reintento(
+                SYSTEM_PROMPT_RESOLUCION, user2, TURNO_JSON_SCHEMA, TurnoLLMResponse
+            )
+
         nuevo_turno_num = partida.metadata.turno_actual + 1
         self._aplicar_actualizaciones(partida, turno_llm)
 
@@ -223,6 +255,7 @@ class PartidaService:
             opciones=list(turno_llm.opciones),
             imagen_url=imagen_url,
             descripcion_escena_en=descripcion_escena,
+            tirada=tirada,
         )
         partida.historial.append(nuevo_turno)
         partida.metadata.turno_actual = nuevo_turno_num
@@ -245,6 +278,7 @@ class PartidaService:
             estado=partida.metadata.estado,
             final=partida.metadata.final,
             razon_fin=partida.metadata.razon_fin,
+            tirada=tirada,
         )
 
     def get_partida(self, codigo_partida: str) -> Partida:
@@ -363,6 +397,27 @@ class PartidaService:
         path = ".".join(str(p) for p in err.absolute_path) or "(root)"
         return f"{path}: {err.message}"
 
+    def _resolver_tirada(self, partida: Partida, requiere: RequiereTirada) -> Tirada:
+        """Resuelve una tirada declarada: tira un d20 real, suma el modificador
+        de la habilidad y clasifica contra el DC fijo de la banda. Compartido por
+        el path síncrono y el de streaming. Las enums vienen ya validadas por el
+        schema, así que la conversión es segura."""
+        habilidad = Habilidad(requiere.habilidad)
+        banda = Banda(requiere.banda)
+        dc = dados.dc_de_banda(banda)
+        modificador = partida.personaje.atributos.modificador(habilidad)
+        d20 = dados.tirar_d20(self._rng)
+        resultado = dados.clasificar_tirada(d20=d20, modificador_total=modificador, dc=dc)
+        return Tirada(
+            habilidad=habilidad,
+            banda=banda,
+            dc=dc,
+            d20=d20,
+            modificador=modificador,
+            total=d20 + modificador,
+            resultado=resultado,
+        )
+
     def _aplicar_actualizaciones(self, partida: Partida, turno_llm: TurnoLLMResponse) -> None:
         upd = turno_llm.actualizaciones_estado
         ws = partida.world_state
@@ -465,7 +520,10 @@ class PartidaService:
 
         try:
             prompt = build_reference_prompt(personaje.descripcion_visual_en, genero)
-            png = self.foundry.generar_imagen(prompt)
+            # PNG sin pérdida: la referencia se re-inyecta en images.edit en cada
+            # escena, así que evitamos comprimirla en JPEG para no acumular
+            # artefactos en todas las imágenes ancladas a ella.
+            png = self.foundry.generar_imagen(prompt, output_format="png")
             personaje.referencia_visual_url = self.imagenes.subir_referencia(codigo_partida, png)
             return png
         except Exception:
@@ -514,6 +572,86 @@ class PartidaService:
         self.partidas.upsert(partida)
         return imagen_url
 
+    async def _stream_narrativa(
+        self, system_prompt: str, user_prompt: str, sink: list[str]
+    ) -> AsyncGenerator[str, None]:
+        """Streamea una llamada al LLM: emite los fragmentos de `narrativa` a
+        medida que llegan y deposita el JSON crudo completo en `sink`."""
+        system_with_schema = (
+            f"{system_prompt}\n\n# SCHEMA JSON ESPERADO\n{json.dumps(TURNO_JSON_SCHEMA, indent=2)}"
+        )
+        extractor = _NarrativaExtractor()
+        accumulated = ""
+        async for chunk in self.foundry.chat_streaming_async(system_with_schema, user_prompt):
+            accumulated += chunk
+            text = extractor.feed(chunk)
+            if text:
+                yield text
+        sink.append(accumulated)
+
+    def _parse_stream_turno(self, accumulated: str) -> TurnoLLMResponse:
+        """Parsea y valida el JSON acumulado de un stream contra el schema del turno."""
+        try:
+            parsed = json.loads(accumulated)
+        except json.JSONDecodeError as e:
+            telemetry.record_llm_error(operation="chat_stream", tipo="json")
+            raise RespuestaLLMInvalidaError(
+                "Stream LLM devolvió JSON inválido",
+                detalles={"inicio": accumulated[:200]},
+            ) from e
+
+        try:
+            validate(parsed, TURNO_JSON_SCHEMA)
+        except ValidationError as e:
+            telemetry.record_llm_error(operation="chat_stream", tipo="schema")
+            raise RespuestaLLMInvalidaError(
+                f"JSON del stream no respeta el schema: {self._summarize_validation_error(e)}",
+                detalles={"inicio": accumulated[:200]},
+            ) from e
+
+        return TurnoLLMResponse.model_validate(parsed)
+
+    async def _parse_stream_con_reintento(
+        self, system_prompt: str, accumulated: str
+    ) -> TurnoLLMResponse:
+        """Parsea el JSON streameado; si no respeta el schema, hace UN reintento
+        no-streaming alimentando el error (igual que la ruta no-streaming). Evita
+        que una sola violación de schema —p. ej. una opción demasiado larga— corte
+        el turno y cierre el modal del dado en el cliente."""
+        try:
+            return self._parse_stream_turno(accumulated)
+        except RespuestaLLMInvalidaError as e:
+            error_msg = (
+                self._summarize_validation_error(e.__cause__)
+                if isinstance(e.__cause__, ValidationError)
+                else "respuesta no es JSON parseable"
+            )
+            logger.warning("Stream LLM inválido (%s); reintento no-streaming", error_msg)
+
+        retry_user = build_retry_user_prompt(accumulated, error_msg)
+        raw2, parsed2 = await asyncio.to_thread(
+            self.foundry.chat_json_raw, system_prompt, retry_user
+        )
+
+        if parsed2 is None:
+            telemetry.record_llm_error(operation="chat_stream", tipo="json")
+            raise RespuestaLLMInvalidaError(
+                "Stream LLM devolvió JSON inválido en dos intentos",
+                detalles={"ultimo_intento": raw2[:500]},
+            )
+
+        try:
+            validate(parsed2, TURNO_JSON_SCHEMA)
+        except ValidationError as e:
+            telemetry.record_llm_error(operation="chat_stream", tipo="schema")
+            raise RespuestaLLMInvalidaError(
+                f"Stream LLM no respetó el schema tras reintento: "
+                f"{self._summarize_validation_error(e)}",
+                detalles={"ultimo_intento": raw2[:500]},
+            ) from e
+
+        return TurnoLLMResponse.model_validate(parsed2)
+
     async def avanzar_turno_stream(
         self, codigo_partida: str, accion: str
     ) -> AsyncGenerator[str, None]:
@@ -547,41 +685,31 @@ class PartidaService:
             PROMPT_VERSION,
         )
 
-        system_with_schema = (
-            f"{SYSTEM_PROMPT_TURNO}\n\n# SCHEMA JSON ESPERADO\n"
-            f"{json.dumps(TURNO_JSON_SCHEMA, indent=2)}"
-        )
+        # Fase 1: streameamos el turno. Si el narrador declara una tirada, esta
+        # narración es la preparación; tras tirar, la fase 2 streamea el desenlace
+        # y reemplaza al turno autoritativo. El frontend resetea la narrativa al
+        # recibir el evento `tirada`.
+        # El turno se entrega de forma atómica: NO emitimos los tokens parciales.
+        # Cuando hay tirada, la fase 1 es preparación que se descarta, y mostrarla
+        # antes de la tirada confundía (el narrador "cambiaba" al resolver). El
+        # cliente revela la narrativa final del turno una sola vez.
         user = build_turno_user_prompt(partida, accion)
+        sink: list[str] = []
+        async for _ in self._stream_narrativa(SYSTEM_PROMPT_TURNO, user, sink):
+            pass
+        turno_llm = await self._parse_stream_con_reintento(SYSTEM_PROMPT_TURNO, sink[0])
 
-        extractor = _NarrativaExtractor()
-        accumulated = ""
-
-        async for chunk in self.foundry.chat_streaming_async(system_with_schema, user):
-            accumulated += chunk
-            text = extractor.feed(chunk)
-            if text:
-                yield _sse("token", {"content": text})
-
-        # Parse completed JSON
-        try:
-            parsed = json.loads(accumulated)
-        except json.JSONDecodeError as e:
-            telemetry.record_llm_error(operation="chat_stream", tipo="json")
-            raise RespuestaLLMInvalidaError(
-                "Stream LLM devolvió JSON inválido",
-                detalles={"inicio": accumulated[:200]},
-            ) from e
-
-        try:
-            validate(parsed, TURNO_JSON_SCHEMA)
-        except ValidationError as e:
-            telemetry.record_llm_error(operation="chat_stream", tipo="schema")
-            raise RespuestaLLMInvalidaError(
-                f"JSON del stream no respeta el schema: {self._summarize_validation_error(e)}",
-                detalles={"inicio": accumulated[:200]},
-            ) from e
-
-        turno_llm = TurnoLLMResponse.model_validate(parsed)
+        tirada = None
+        if turno_llm.requiere_tirada is not None:
+            tirada = self._resolver_tirada(partida, turno_llm.requiere_tirada)
+            # La tirada se emite ANTES de generar el desenlace: el cliente abre el
+            # modal del dado mientras la fase 2 se genera en paralelo.
+            yield _sse("tirada", _tirada_a_dict(tirada))
+            user2 = build_resolucion_user_prompt(partida, accion, tirada)
+            sink2: list[str] = []
+            async for _ in self._stream_narrativa(SYSTEM_PROMPT_RESOLUCION, user2, sink2):
+                pass
+            turno_llm = await self._parse_stream_con_reintento(SYSTEM_PROMPT_RESOLUCION, sink2[0])
 
         nuevo_turno_num = partida.metadata.turno_actual + 1
         es_final = turno_llm.estado_aventura.tipo == "finalizada"
@@ -596,6 +724,7 @@ class PartidaService:
             opciones=list(turno_llm.opciones),
             imagen_url=None,
             descripcion_escena_en=descripcion_escena,
+            tirada=tirada,
         )
         partida.historial.append(nuevo_turno)
         partida.metadata.turno_actual = nuevo_turno_num
@@ -623,6 +752,7 @@ class PartidaService:
                 "final": partida.metadata.final.value if partida.metadata.final else None,
                 "razon_fin": partida.metadata.razon_fin,
                 "imagen_pendiente": imagen_solicitada,
+                "tirada": _tirada_a_dict(tirada) if tirada else None,
             },
         )
 
@@ -651,6 +781,19 @@ class PartidaService:
         alphabet = "abcdefghijkmnpqrstuvwxyz23456789"
         groups = ["".join(secrets.choice(alphabet) for _ in range(4)) for _ in range(3)]
         return "-".join(groups)
+
+
+def _tirada_a_dict(tirada: Tirada) -> dict:
+    """Serializa una Tirada para el evento SSE `tirada` (y respuestas de turno)."""
+    return {
+        "habilidad": tirada.habilidad.value,
+        "banda": tirada.banda.value,
+        "dc": tirada.dc,
+        "d20": tirada.d20,
+        "modificador": tirada.modificador,
+        "total": tirada.total,
+        "resultado": tirada.resultado.value,
+    }
 
 
 class _NarrativaExtractor:

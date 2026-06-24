@@ -6,7 +6,11 @@ import {
 
 beforeEach(() => {
   localStorage.clear();
-  useSettingsStore.setState({ narrativaFont: "serif", narrativaSize: "md" });
+  useSettingsStore.setState({
+    narrativaFont: "serif",
+    narrativaSize: "md",
+    diceScheme: "marfil",
+  });
 });
 
 describe("settings-store", () => {
@@ -14,6 +18,23 @@ describe("settings-store", () => {
     const s = useSettingsStore.getState();
     expect(s.narrativaFont).toBe("serif");
     expect(s.narrativaSize).toBe("md");
+  });
+
+  it("usa el esquema de dado marfil por defecto", () => {
+    expect(useSettingsStore.getState().diceScheme).toBe("marfil");
+  });
+
+  it("setDiceScheme actualiza el esquema del dado", () => {
+    useSettingsStore.getState().setDiceScheme("obsidiana");
+    expect(useSettingsStore.getState().diceScheme).toBe("obsidiana");
+  });
+
+  it("persiste el esquema del dado en localStorage", () => {
+    useSettingsStore.getState().setDiceScheme("esmeralda");
+
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    const persisted = JSON.parse(raw as string).state;
+    expect(persisted.diceScheme).toBe("esmeralda");
   });
 
   it("setNarrativaFont actualiza la fuente", () => {

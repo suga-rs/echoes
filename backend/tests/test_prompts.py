@@ -158,4 +158,38 @@ def test_system_prompt_fija_regla_de_idioma_bidireccional(prompt: str):
 def test_prompt_version_fue_bumpeada():
     """Pin de la versión activa: cambiar prompts/schema sin bumpear esto (y sin
     agregar fila al changelog en docs/prompts.md) rompe este test a propósito."""
-    assert PROMPT_VERSION == "2.2.0"
+    assert PROMPT_VERSION == "3.1.0"
+
+
+# --- tiradas: system prompt del turno y prompt de resolución (fase 2) --------
+
+
+def test_system_prompt_turno_explica_cuando_pedir_tirada():
+    low = SYSTEM_PROMPT_TURNO.lower()
+    assert "requiere_tirada" in low
+    # Nombra las seis habilidades y la decisión trivial/imposible = sin tirada.
+    assert "fuerza" in low and "carisma" in low
+    assert "trivial" in low and "imposible" in low
+
+
+def test_build_resolucion_user_prompt_inyecta_la_tirada(partida_de_ejemplo):
+    from app.models.domain import Banda, Habilidad, ResultadoTirada, Tirada
+    from app.services.prompts import SYSTEM_PROMPT_RESOLUCION, build_resolucion_user_prompt
+
+    tirada = Tirada(
+        habilidad=Habilidad.DESTREZA,
+        banda=Banda.MEDIA,
+        dc=15,
+        d20=11,
+        modificador=4,
+        total=15,
+        resultado=ResultadoTirada.EXITO,
+    )
+    prompt = build_resolucion_user_prompt(partida_de_ejemplo, "saltar el abismo", tirada)
+
+    assert "destreza" in prompt
+    assert "DC 15" in prompt
+    assert "exito" in prompt
+    assert "+4" in prompt
+    # El system prompt de resolución obliga a honrar el resultado.
+    assert "honr" in SYSTEM_PROMPT_RESOLUCION.lower()
